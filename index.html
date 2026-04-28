@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coforyou Live Calendar</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">COFORYOU BRAND UPDATE</p>
+        <h1>直播 / 团购 / 活动排期</h1>
+      </div>
+      <div class="topbar-actions">
+        <button class="icon-button" id="refreshButton" type="button" title="刷新数据" aria-label="刷新数据">
+          ↻
+        </button>
+        <div class="sync-status" id="syncStatus">使用示例资料</div>
+      </div>
+    </header>
+
+    <main>
+      <section class="summary-grid" aria-label="总览">
+        <article class="metric">
+          <span>已谈好品牌</span>
+          <strong id="confirmedCount">0</strong>
+        </article>
+        <article class="metric">
+          <span>Potential 品牌</span>
+          <strong id="potentialCount">0</strong>
+        </article>
+        <article class="metric">
+          <span>本月活动</span>
+          <strong id="currentMonthCount">0</strong>
+        </article>
+        <article class="metric highlight">
+          <span>总 Target</span>
+          <strong id="totalTarget">RM 0</strong>
+        </article>
+      </section>
+
+      <details class="notice-board" id="noticeBoard">
+        <summary class="notice-summary">
+          <span>品牌重要通知 ❗️</span>
+          <div class="notice-marquee" aria-hidden="true">
+            <div class="notice-track" id="noticeTrack">暂无重要通知</div>
+          </div>
+        </summary>
+        <div class="notice-list" id="noticeList"></div>
+      </details>
+
+      <section class="control-row" aria-label="筛选">
+        <div class="month-tabs" id="monthTabs"></div>
+        <label class="search-box">
+          <span>搜索</span>
+          <input id="searchInput" type="search" placeholder="品牌 / 产品 / 事项" />
+        </label>
+      </section>
+
+      <section class="workspace">
+        <section class="event-panel">
+          <div class="panel-heading split">
+            <div>
+              <p class="eyebrow">DATE BOARD</p>
+              <h2 id="eventPanelTitle">全部活动</h2>
+            </div>
+          </div>
+          <div class="event-list" id="eventList"></div>
+        </section>
+      </section>
+
+      <details class="pipeline-section">
+        <summary class="panel-heading split">
+          <div>
+            <p class="eyebrow">BRAND PIPELINE</p>
+            <h2>完整品牌表</h2>
+          </div>
+          <span class="muted" id="pipelineCount">0 个品牌</span>
+        </summary>
+        <div class="brand-table-wrap">
+          <table class="brand-table">
+            <thead>
+              <tr>
+                <th>月份</th>
+                <th>日期</th>
+                <th>活动</th>
+                <th>品牌</th>
+                <th>状态</th>
+                <th>平台</th>
+                <th>产品 / 配套</th>
+                <th>Previous Sales</th>
+                <th>Target</th>
+                <th>重要通知</th>
+                <th>重要事项</th>
+              </tr>
+            </thead>
+            <tbody id="pipelineTable"></tbody>
+          </table>
+        </div>
+      </details>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
