@@ -47,7 +47,7 @@ input {
   gap: 20px;
   padding: 22px clamp(18px, 4vw, 56px);
   border-bottom: 1px solid var(--line);
-  background: rgba(251, 242, 229, 0.94);
+  background: rgba(253, 240, 213, 0.94);
   backdrop-filter: blur(16px);
 }
 
