@@ -16,55 +16,37 @@
         <button class="icon-button" id="refreshButton" type="button" title="刷新数据" aria-label="刷新数据">
           ↻
         </button>
-        <div class="sync-status" id="syncStatus">使用示例资料</div>
+        <div class="sync-status" id="syncStatus">coforyou GOGOGO!</div>
       </div>
     </header>
 
     <main>
-      <section class="summary-grid" aria-label="总览">
-        <article class="metric">
-          <span>已谈好品牌</span>
-          <strong id="confirmedCount">0</strong>
-        </article>
-        <article class="metric">
-          <span>Potential 品牌</span>
-          <strong id="potentialCount">0</strong>
-        </article>
-        <article class="metric">
-          <span>本月活动</span>
-          <strong id="currentMonthCount">0</strong>
-        </article>
+      <section class="summary-grid target-summary" aria-label="总览">
         <article class="metric highlight">
           <span>总 Target</span>
           <strong id="totalTarget">RM 0</strong>
         </article>
+        <article class="metric achieved-card">
+          <span>目前达到</span>
+          <strong id="overallAchieved">RM 0</strong>
+        </article>
       </section>
 
-      <details class="notice-board" id="noticeBoard">
-        <summary class="notice-summary">
-          <span>品牌重要通知 ❗️</span>
-          <div class="notice-marquee" aria-hidden="true">
-            <div class="notice-track" id="noticeTrack">暂无重要通知</div>
-          </div>
-        </summary>
+      <section class="notice-board" id="noticeBoard" aria-label="品牌重要通知">
         <div class="notice-list" id="noticeList"></div>
-      </details>
+      </section>
 
       <section class="control-row" aria-label="筛选">
         <div class="month-tabs" id="monthTabs"></div>
-        <label class="search-box">
-          <span>搜索</span>
-          <input id="searchInput" type="search" placeholder="品牌 / 产品 / 事项" />
-        </label>
       </section>
 
       <section class="workspace">
         <section class="event-panel">
           <div class="panel-heading split">
             <div>
-              <p class="eyebrow">DATE BOARD</p>
               <h2 id="eventPanelTitle">全部活动</h2>
             </div>
+            <span class="month-target-pill" id="monthTargetInline">月份 Target RM 0</span>
           </div>
           <div class="event-list" id="eventList"></div>
         </section>
@@ -91,6 +73,7 @@
                 <th>产品 / 配套</th>
                 <th>Previous Sales</th>
                 <th>Target</th>
+                <th>目前 Sales</th>
                 <th>重要通知</th>
                 <th>重要事项</th>
               </tr>
