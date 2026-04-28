@@ -993,8 +993,8 @@ dd {
   }
 
   .event-list {
-    gap: 9px;
-    padding: 10px;
+    gap: 7px;
+    padding: 8px;
   }
 
   .date-accordion {
@@ -1009,15 +1009,14 @@ dd {
   }
 
   .date-summary {
-    grid-template-columns: minmax(0, 1fr) 30px;
+    grid-template-columns: 74px minmax(0, 1fr) 28px;
     grid-template-areas:
-      "date toggle"
-      "brands brands"
-      "types types"
-      "target target";
-    gap: 9px;
+      "date brands toggle"
+      "types target toggle";
+    row-gap: 9px;
+    column-gap: 8px;
     min-height: 0;
-    padding: 12px;
+    padding: 8px;
   }
 
   .date-summary::after {
@@ -1028,49 +1027,57 @@ dd {
   .date-mark {
     grid-area: date;
     justify-self: start;
-    min-height: 34px;
-    padding-inline: 10px;
-    font-size: 18px;
+    min-height: 28px;
+    padding-inline: 8px;
+    font-size: 15px;
   }
 
   .date-title {
     grid-area: brands;
-    gap: 6px;
+    align-self: center;
+    gap: 5px;
   }
 
   .summary-brand-pill {
-    min-height: 30px;
+    min-height: 24px;
     max-width: 100%;
-    padding: 4px 10px;
-    font-size: 14px;
+    padding: 3px 8px;
+    font-size: 12px;
     overflow-wrap: anywhere;
     white-space: normal;
   }
 
   .summary-brand-pill.potential-brand {
-    min-height: 26px;
-    font-size: 12px;
+    min-height: 22px;
+    padding: 2px 7px;
+    font-size: 11px;
   }
 
   .date-meta {
     grid-area: types;
-    gap: 6px;
+    align-self: center;
+    justify-self: start;
+    gap: 5px;
   }
 
   .summary-type-pill {
-    min-height: 25px;
-    padding: 3px 8px;
-    font-size: 11px;
+    min-height: 22px;
+    padding: 2px 7px;
+    font-size: 10px;
+    max-width: 74px;
+    white-space: normal;
+    text-align: center;
   }
 
   .date-target {
     grid-area: target;
-    font-size: 19px;
+    align-self: center;
+    font-size: 15px;
   }
 
   .brand-accordion-list {
-    gap: 8px;
-    padding: 8px;
+    gap: 6px;
+    padding: 7px;
   }
 
   .brand-summary {
