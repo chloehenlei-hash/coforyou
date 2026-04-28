@@ -858,34 +858,311 @@ dd {
 }
 
 @media (max-width: 620px) {
+  body {
+    font-size: 14px;
+  }
+
+  .topbar {
+    gap: 14px;
+    padding: 16px 14px 14px;
+  }
+
+  .eyebrow {
+    font-size: 10px;
+    margin-bottom: 5px;
+  }
+
+  h1 {
+    font-size: 30px;
+  }
+
+  h2 {
+    font-size: 22px;
+  }
+
   main {
-    padding-inline: 12px;
+    padding: 14px 10px 36px;
+  }
+
+  .topbar-actions {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .sync-status {
+    min-width: 0;
+    width: 100%;
+    padding-inline: 8px;
+    font-size: 12px;
   }
 
   .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .metric {
+    min-height: 88px;
+    padding: 12px;
+  }
+
+  .metric span {
+    font-size: 12px;
+  }
+
+  .metric strong {
+    font-size: 28px;
+  }
+
+  .metric.highlight {
+    grid-column: 1 / -1;
+    min-height: 78px;
+  }
+
+  .notice-board {
+    margin-top: 12px;
+    border-radius: 8px;
+  }
+
+  .notice-summary {
+    grid-template-columns: 1fr 28px;
+    grid-template-areas:
+      "title toggle"
+      "marquee marquee";
+    gap: 8px 12px;
+    min-height: 64px;
+    padding: 12px;
+  }
+
+  .notice-summary > span {
+    grid-area: title;
+    font-size: 15px;
+  }
+
+  .notice-marquee {
+    grid-area: marquee;
+    font-size: 13px;
+  }
+
+  .notice-summary::after {
+    grid-area: toggle;
+  }
+
+  .notice-list {
+    padding: 0 10px 10px;
+  }
+
+  .notice-item {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .notice-item p {
+    font-size: 15px;
+  }
+
+  .control-row {
+    gap: 10px;
+    margin: 14px 0;
+  }
+
+  .month-tabs {
+    width: calc(100vw - 20px);
+    margin-inline: -1px;
+    padding-bottom: 4px;
+  }
+
+  .month-tab {
+    min-width: 66px;
+    padding: 9px 12px;
+  }
+
+  .search-box {
+    min-height: 44px;
+    padding: 8px 11px;
+  }
+
+  .event-panel,
+  .pipeline-section {
+    border-radius: 8px;
+  }
+
+  .panel-heading {
+    padding: 14px;
+  }
+
+  .event-list {
+    gap: 9px;
+    padding: 10px;
+  }
+
+  .date-accordion {
+    border-radius: 8px;
   }
 
   .date-summary,
   .brand-summary,
-  .notice-summary,
   .notice-item {
     grid-template-columns: 1fr;
     align-items: start;
   }
 
-  .date-summary::after,
-  .brand-summary::after,
-  .notice-summary::after {
+  .date-summary {
+    grid-template-columns: minmax(0, 1fr) 30px;
+    grid-template-areas:
+      "date toggle"
+      "brands brands"
+      "types types"
+      "target target";
+    gap: 9px;
+    min-height: 0;
+    padding: 12px;
+  }
+
+  .date-summary::after {
+    grid-area: toggle;
+    justify-self: end;
+  }
+
+  .date-mark {
+    grid-area: date;
     justify-self: start;
+    min-height: 34px;
+    padding-inline: 10px;
+    font-size: 18px;
+  }
+
+  .date-title {
+    grid-area: brands;
+    gap: 6px;
+  }
+
+  .summary-brand-pill {
+    min-height: 30px;
+    max-width: 100%;
+    padding: 4px 10px;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .summary-brand-pill.potential-brand {
+    min-height: 26px;
+    font-size: 12px;
+  }
+
+  .date-meta {
+    grid-area: types;
+    gap: 6px;
+  }
+
+  .summary-type-pill {
+    min-height: 25px;
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+
+  .date-target {
+    grid-area: target;
+    font-size: 19px;
+  }
+
+  .brand-accordion-list {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .brand-summary {
+    grid-template-columns: minmax(0, 1fr) 30px;
+    grid-template-areas:
+      "type toggle"
+      "brand brand"
+      "status notice"
+      "platform target";
+    gap: 8px;
+    min-height: 0;
+    padding: 10px;
+  }
+
+  .brand-summary::after {
+    grid-area: toggle;
+    justify-self: end;
+  }
+
+  .brand-summary .type-pill {
+    grid-area: type;
+    justify-self: start;
+  }
+
+  .brand-summary .brand-name {
+    grid-area: brand;
+    max-width: 100%;
+    font-size: 16px;
+    overflow-wrap: anywhere;
+  }
+
+  .brand-summary .status-pill {
+    grid-area: status;
+    justify-self: start;
+  }
+
+  .brand-summary .notice-button {
+    grid-area: notice;
+    justify-self: end;
+  }
+
+  .brand-platform {
+    grid-area: platform;
+    align-self: center;
+  }
+
+  .brand-target {
+    grid-area: target;
+    justify-self: end;
+    align-self: center;
+    font-size: 17px;
   }
 
   .date-target,
   .brand-target {
-    text-align: left;
+    text-align: right;
   }
 
   .details-grid {
     grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .brand-details {
+    padding: 10px;
+  }
+
+  .notice-alert {
+    padding: 10px;
+  }
+
+  .notice-alert p {
+    font-size: 15px;
+  }
+
+  .notes {
+    padding: 10px;
+    font-size: 14px;
+  }
+
+  .pipeline-section > summary {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+
+  .brand-table {
+    min-width: 980px;
+  }
+
+  .brand-table th,
+  .brand-table td {
+    padding: 10px;
   }
 }
