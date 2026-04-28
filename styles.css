@@ -663,11 +663,6 @@ main {
   box-shadow: 0 0 0 3px rgba(167, 36, 36, 0.12);
 }
 
-.notice-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.48;
-}
-
 .brand-disclosure.notice-focus {
   outline: 3px solid rgba(167, 36, 36, 0.35);
   outline-offset: 2px;
@@ -715,6 +710,10 @@ main {
   padding: 12px 14px 14px;
   border-top: 1px solid #efc8bd;
   background: #fffdf9;
+}
+
+.detail-status-pill {
+  display: none;
 }
 
 .notice-alert {
@@ -1081,15 +1080,13 @@ dd {
   }
 
   .brand-summary {
-    grid-template-columns: minmax(0, 1fr) 30px;
+    grid-template-columns: auto minmax(0, 1fr) minmax(70px, auto) 28px;
     grid-template-areas:
-      "type toggle"
-      "brand brand"
-      "status notice"
-      "platform target";
-    gap: 8px;
+      "type brand platform toggle"
+      "notice target target toggle";
+    gap: 7px 8px;
     min-height: 0;
-    padding: 10px;
+    padding: 9px;
   }
 
   .brand-summary::after {
@@ -1100,28 +1097,36 @@ dd {
   .brand-summary .type-pill {
     grid-area: type;
     justify-self: start;
+    align-self: center;
   }
 
   .brand-summary .brand-name {
     grid-area: brand;
     max-width: 100%;
-    font-size: 16px;
+    min-height: 28px;
+    padding: 3px 8px;
+    font-size: 14px;
     overflow-wrap: anywhere;
   }
 
   .brand-summary .status-pill {
-    grid-area: status;
-    justify-self: start;
+    display: none;
   }
 
   .brand-summary .notice-button {
     grid-area: notice;
-    justify-self: end;
+    justify-self: start;
+    min-height: 27px;
+    padding: 4px 9px;
+    font-size: 11px;
   }
 
   .brand-platform {
     grid-area: platform;
     align-self: center;
+    justify-self: end;
+    font-size: 12px;
+    text-align: right;
   }
 
   .brand-target {
@@ -1143,6 +1148,26 @@ dd {
 
   .brand-details {
     padding: 10px;
+  }
+
+  .detail-status-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 27px;
+    margin-bottom: 8px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 900;
+  }
+
+  .detail-status-pill.confirmed {
+    background: var(--green);
+  }
+
+  .detail-status-pill.potential {
+    background: var(--amber);
   }
 
   .notice-alert {

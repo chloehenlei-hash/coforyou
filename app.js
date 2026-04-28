@@ -482,13 +482,18 @@ function renderEvents() {
           <span class="type-pill">${escapeHtml(event.type || "活动")}</span>
           <strong class="brand-name ${statusClass(event)}">${escapeHtml(event.brand || "未命名品牌")}</strong>
           <span class="status-pill ${isConfirmed ? "confirmed" : "potential"}">${escapeHtml(event.status || "Potential")}</span>
-          <button class="notice-button ${event.importantNotice ? "has-notice" : ""}" type="button" ${
-            event.importantNotice ? "" : "disabled"
-          }>重要通知</button>
+          ${
+            event.importantNotice
+              ? '<button class="notice-button has-notice" type="button">重要通知</button>'
+              : ""
+          }
           <span class="brand-platform">${escapeHtml(event.platform || "-")}</span>
           <span class="brand-target">${formatMoney(event.target)}</span>
         </summary>
         <div class="brand-details">
+          <span class="detail-status-pill ${isConfirmed ? "confirmed" : "potential"}">${escapeHtml(
+            event.status || "Potential"
+          )}</span>
           ${
             event.importantNotice
               ? `<div class="notice-alert"><strong>重要通知</strong><p>${escapeHtml(event.importantNotice)}</p></div>`
