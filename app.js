@@ -78,6 +78,19 @@ let activeDepartment = departments[0];
 let activeTaskRef = null;
 let state = ensureStateShape(loadState());
 let sheetSaveTimer = null;
+let pendingPreviewTasks = [];
+
+const continuationPrefixes = [
+  "后续优化",
+  "备注",
+  "补充",
+  "说明",
+  "details",
+  "detail",
+  "note",
+  "notes",
+  "description",
+];
 
 const departmentTabs = document.querySelector("#departmentTabs");
 const activeDepartmentStats = document.querySelector("#activeDepartmentStats");
@@ -89,6 +102,10 @@ const defaultPriority = document.querySelector("#defaultPriority");
 const summaryInput = document.querySelector("#summaryInput");
 const organizeButton = document.querySelector("#organizeButton");
 const clearInputButton = document.querySelector("#clearInputButton");
+const previewPanel = document.querySelector("#previewPanel");
+const previewList = document.querySelector("#previewList");
+const confirmPreviewButton = document.querySelector("#confirmPreviewButton");
+const cancelPreviewButton = document.querySelector("#cancelPreviewButton");
 const listGrid = document.querySelector("#listGrid");
 const completedList = document.querySelector("#completedList");
 const completedCount = document.querySelector("#completedCount");
@@ -311,12 +328,24 @@ function parseSummary(text) {
       return;
     }
 
+    const actionTask = parseActionTask(line);
+    if (actionTask) {
+      currentTask = addParsedTask(tasks, actionTask.title, explicitCategory || currentCategory, currentSection);
+      if (actionTask.detail) currentTask.details.push(actionTask.detail);
+      return;
+    }
+
     if (bullet) {
       if (currentTask) {
         currentTask.details.push(line);
       } else {
         currentTask = addParsedTask(tasks, line, currentCategory, currentSection);
       }
+      return;
+    }
+
+    if (currentTask && isDetailLine(line)) {
+      currentTask.details.push(line);
       return;
     }
 
@@ -402,6 +431,24 @@ function addParsedTask(tasks, text, categoryId, sectionTitle) {
   return task;
 }
 
+function parseActionTask(line) {
+  const actionMatch = line.match(/^(?:action|行动|下一步)[:：]\s*(.+)$/i);
+  const content = actionMatch ? actionMatch[1].trim() : line.trim();
+  const bracketMatch = content.match(/^(【[^】]+】)(.*)$/);
+  if (!bracketMatch) return null;
+
+  return {
+    title: bracketMatch[1].trim(),
+    detail: bracketMatch[2].trim(),
+  };
+}
+
+function isDetailLine(line) {
+  const cleaned = line.trim();
+  if (/^https?:\/\//i.test(cleaned)) return true;
+  return continuationPrefixes.some((prefix) => cleaned.toLowerCase().startsWith(prefix.toLowerCase()));
+}
+
 function isBulletLine(line) {
   return /^\s*(?:[-*•·]|[▪◦○●]|[🌟⭐️✅])/.test(line);
 }
@@ -426,7 +473,7 @@ function isSectionLine(line, rawLines, index) {
   const nextLooksNumberedTask = nextCleaned && hasLeadingNumber(nextCleaned);
   const nextLooksLikeChild =
     nextCleaned && !isBulletLine(nextLine) && !getExplicitCategory(nextCleaned) && !hasLeadingNumber(nextCleaned);
-  const namedSection = /^(this week task|product department|community|客服|周年庆|直播流程|直播流程\s*&\s*准备)$/i.test(cleaned);
+  const namedSection = /^(this week task|product department|community|community\s*&\s*客服|客服|周年庆|直播流程|直播流程\s*&\s*准备)$/i.test(cleaned);
 
   return (hasNumber && shortHeading && nextLooksLikeChild) || (!hasNumber && shortHeading && nextLooksNumberedTask) || namedSection;
 }
@@ -466,9 +513,83 @@ function organizeSummary() {
   const parsedTasks = parseSummary(summaryInput.value);
   if (!parsedTasks.length) return;
 
+  pendingPreviewTasks = parsedTasks;
+  renderPreview();
+  showToast(`已预览 ${parsedTasks.length} 个事项`);
+}
+
+function renderPreview() {
+  previewPanel.hidden = !pendingPreviewTasks.length;
+  previewList.innerHTML = pendingPreviewTasks.length
+    ? pendingPreviewTasks
+        .map(
+          (task, index) => `
+            <article class="preview-item" data-preview-index="${index}">
+              <div class="preview-item-head">
+                <span class="preview-number">${index + 1}</span>
+                <button class="preview-remove" type="button" data-preview-remove="${index}">移除</button>
+              </div>
+              <div class="preview-grid">
+                <label class="field">
+                  <span>分类</span>
+                  <select data-preview-field="categoryId">
+                    ${categories
+                      .map(
+                        (category) =>
+                          `<option value="${category.id}" ${category.id === task.categoryId ? "selected" : ""}>${escapeHtml(
+                            category.title
+                          )}</option>`
+                      )
+                      .join("")}
+                  </select>
+                </label>
+                <label class="field">
+                  <span>主标题 / Section</span>
+                  <input data-preview-field="sectionTitle" type="text" value="${escapeAttribute(task.sectionTitle || "")}" />
+                </label>
+              </div>
+              <label class="field">
+                <span>外面会显示的事项</span>
+                <input data-preview-field="text" type="text" value="${escapeAttribute(task.text || "")}" />
+              </label>
+              <label class="field">
+                <span>点进去才会看到的 Description</span>
+                <textarea data-preview-field="details">${escapeHtml((task.details || []).join("\n"))}</textarea>
+              </label>
+            </article>
+          `
+        )
+        .join("")
+    : "";
+}
+
+function collectPreviewTasks() {
+  return Array.from(previewList.querySelectorAll(".preview-item"))
+    .map((item) => {
+      const getField = (field) => item.querySelector(`[data-preview-field="${field}"]`)?.value.trim() || "";
+      return {
+        categoryId: getField("categoryId") || "todo",
+        sectionTitle: getField("sectionTitle"),
+        text: getField("text") || "待补充事项",
+        details: getField("details")
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean),
+      };
+    })
+    .filter((task) => task.text);
+}
+
+function syncPreviewTasksFromDom() {
+  pendingPreviewTasks = collectPreviewTasks();
+}
+
+function confirmPreviewTasks() {
+  const previewTasks = collectPreviewTasks();
+  if (!previewTasks.length) return;
   if (!state[activeDepartment]) state[activeDepartment] = createEmptyDepartment();
 
-  parsedTasks
+  previewTasks
     .slice()
     .reverse()
     .forEach((parsedTask) => {
@@ -477,9 +598,18 @@ function organizeSummary() {
     });
 
   saveState();
+  pendingPreviewTasks = [];
+  previewPanel.hidden = true;
+  previewList.innerHTML = "";
   summaryInput.value = "";
-  showToast(`已整理 ${parsedTasks.length} 个事项`);
+  showToast(`已加入 ${previewTasks.length} 个事项`);
   renderBoard();
+}
+
+function cancelPreview() {
+  pendingPreviewTasks = [];
+  previewPanel.hidden = true;
+  previewList.innerHTML = "";
 }
 
 function renderDepartments() {
@@ -677,6 +807,10 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function escapeAttribute(value) {
+  return escapeHtml(value).replaceAll("\n", "&#10;");
+}
+
 function renderTaskTitle(task) {
   const section = normalizeText(task.sectionTitle);
   const text = normalizeText(task.text);
@@ -733,6 +867,17 @@ document.addEventListener("click", (event) => {
 organizeButton.addEventListener("click", organizeSummary);
 clearInputButton.addEventListener("click", () => {
   summaryInput.value = "";
+  cancelPreview();
+});
+confirmPreviewButton.addEventListener("click", confirmPreviewTasks);
+cancelPreviewButton.addEventListener("click", cancelPreview);
+previewList.addEventListener("click", (event) => {
+  const removeButton = event.target.closest("[data-preview-remove]");
+  if (!removeButton) return;
+  syncPreviewTasksFromDom();
+  const index = Number(removeButton.dataset.previewRemove);
+  pendingPreviewTasks.splice(index, 1);
+  renderPreview();
 });
 closeModalButton.addEventListener("click", closeTaskModal);
 cancelModalButton.addEventListener("click", closeTaskModal);
