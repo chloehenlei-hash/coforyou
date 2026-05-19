@@ -80,7 +80,7 @@ let state = ensureStateShape(loadState());
 let sheetSaveTimer = null;
 
 const departmentTabs = document.querySelector("#departmentTabs");
-const departmentSummary = document.querySelector("#departmentSummary");
+const activeDepartmentStats = document.querySelector("#activeDepartmentStats");
 const activeDepartmentTitle = document.querySelector("#activeDepartmentTitle");
 const boardDepartmentTitle = document.querySelector("#boardDepartmentTitle");
 const meetingTitle = document.querySelector("#meetingTitle");
@@ -95,6 +95,7 @@ const completedCount = document.querySelector("#completedCount");
 const taskModal = document.querySelector("#taskModal");
 const modalDepartment = document.querySelector("#modalDepartment");
 const modalTaskText = document.querySelector("#modalTaskText");
+const modalSectionTitle = document.querySelector("#modalSectionTitle");
 const modalCategory = document.querySelector("#modalCategory");
 const modalPriority = document.querySelector("#modalPriority");
 const modalOwner = document.querySelector("#modalOwner");
@@ -161,6 +162,7 @@ function flattenState() {
         department,
         category: category.id,
         text: task.text || "",
+        sectionTitle: task.sectionTitle || "",
         owner: task.owner || "",
         due: task.due || "",
         meetingTitle: task.meetingTitle || "",
@@ -188,6 +190,7 @@ function stateFromRows(rows) {
     nextState[department][categoryId].push({
       id: row.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       text: row.text || "",
+      sectionTitle: row.sectionTitle || "",
       owner: row.owner || "",
       due: row.due || "",
       meetingTitle: row.meetingTitle || "Untitled Meeting",
@@ -278,11 +281,51 @@ function normalizeText(value) {
   return String(value || "").trim();
 }
 
-function splitSummary(text) {
-  return normalizeText(text)
-    .split(/\n|•|·|。|；|;|\r/g)
-    .map((line) => line.replace(/^[-*\d.)\s]+/, "").trim())
+function parseSummary(text) {
+  const rawLines = normalizeText(text)
+    .split(/\n|\r/g)
+    .map((line) => line.trim())
     .filter(Boolean);
+  const tasks = [];
+  let currentCategory = "todo";
+  let currentSection = "";
+  let currentTask = null;
+
+  rawLines.forEach((rawLine, index) => {
+    if (isSeparatorLine(rawLine)) return;
+
+    const bullet = isBulletLine(rawLine);
+    const line = cleanSummaryLine(rawLine);
+    if (!line) return;
+
+    const explicitCategory = getExplicitCategory(line);
+    if (explicitCategory && isCategoryOnlyLine(line)) {
+      currentCategory = explicitCategory;
+      currentTask = null;
+      return;
+    }
+
+    if (!bullet && isSectionLine(line, rawLines, index)) {
+      currentSection = stripLeadingNumber(line);
+      currentTask = null;
+      return;
+    }
+
+    if (bullet) {
+      if (currentTask) {
+        currentTask.details.push(line);
+      } else {
+        currentTask = addParsedTask(tasks, line, currentCategory, currentSection);
+      }
+      return;
+    }
+
+    const categoryId = explicitCategory || currentCategory || classifyLine(line);
+    const taskText = stripCategoryLabel(stripLeadingNumber(line));
+    currentTask = addParsedTask(tasks, taskText, categoryId || currentCategory, currentSection);
+  });
+
+  return tasks;
 }
 
 function classifyLine(line) {
@@ -301,6 +344,10 @@ function classifyLine(line) {
 
 function getExplicitCategory(line) {
   const lower = line.toLowerCase().trim();
+  if (/^(todo|to do)$/.test(lower)) return "todo";
+  if (/^(pending|need confirm|confirm)$/.test(lower)) return "pending";
+  if (/^(issue|issues|blocker|blockers)$/.test(lower)) return "issues";
+
   const labelMap = [
     { id: "todo", pattern: "todo|to do" },
     { id: "pending", pattern: "pending|need confirm|confirm" },
@@ -325,6 +372,10 @@ function stripCategoryLabel(line) {
   return cleaned.trim();
 }
 
+function isCategoryOnlyLine(line) {
+  return /^(todo|to do|pending|need confirm|confirm|issue|issues|blocker|blockers)$/i.test(line.trim());
+}
+
 function findOwner(line) {
   const ownerMatch =
     line.match(/(?:owner|pic|负责人)[:：]\s*([A-Za-z\u4e00-\u9fa5 ]{2,18})/i) ||
@@ -340,37 +391,94 @@ function findDate(line) {
   return dateMatch ? dateMatch[0] : "日期待补充";
 }
 
-function createTask(line, categoryId) {
-  const text = stripCategoryLabel(line) || line;
+function addParsedTask(tasks, text, categoryId, sectionTitle) {
+  const task = {
+    text: text || "待补充事项",
+    categoryId,
+    sectionTitle,
+    details: [],
+  };
+  tasks.push(task);
+  return task;
+}
+
+function isBulletLine(line) {
+  return /^\s*(?:[-*•·]|[▪◦○●]|[🌟⭐️✅])/.test(line);
+}
+
+function isSeparatorLine(line) {
+  return /^[﹉_\-=—\s]+$/.test(line);
+}
+
+function cleanSummaryLine(line) {
+  return line
+    .replace(/[\u2060]/g, "")
+    .replace(/^\s*(?:[-*•·]|[▪◦○●]|[🌟⭐️✅])\s*/u, "")
+    .trim();
+}
+
+function isSectionLine(line, rawLines, index) {
+  const cleaned = stripLeadingNumber(line);
+  const nextLine = rawLines.slice(index + 1).find((item) => !isSeparatorLine(item));
+  const nextCleaned = nextLine ? cleanSummaryLine(nextLine) : "";
+  const hasNumber = line !== cleaned;
+  const shortHeading = cleaned.length <= 22 && !/[，,。~～]/.test(cleaned);
+  const nextLooksNumberedTask = nextCleaned && hasLeadingNumber(nextCleaned);
+  const nextLooksLikeChild =
+    nextCleaned && !isBulletLine(nextLine) && !getExplicitCategory(nextCleaned) && !hasLeadingNumber(nextCleaned);
+  const namedSection = /^(this week task|product department|community|客服|周年庆|直播流程|直播流程\s*&\s*准备)$/i.test(cleaned);
+
+  return (hasNumber && shortHeading && nextLooksLikeChild) || (!hasNumber && shortHeading && nextLooksNumberedTask) || namedSection;
+}
+
+function hasLeadingNumber(line) {
+  return /^\s*(?:\d+\s*[.)。、]?|\d+\u20e3\ufe0f?)\s*/.test(line);
+}
+
+function stripLeadingNumber(line) {
+  return line
+    .replace(/^\s*\d+\s*[.)。、]?\s*/, "")
+    .replace(/^\s*\d+\u20e3\ufe0f?\s*/, "")
+    .trim();
+}
+
+function createTask(parsedTask, categoryId) {
+  const text = stripCategoryLabel(parsedTask.text) || parsedTask.text;
   const title = meetingTitle.value.trim() || `${activeDepartment} Meeting`;
+  const notes = parsedTask.details.join("\n");
+  const searchText = `${text}\n${notes}`;
   return {
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     text,
-    owner: findOwner(text),
-    due: findDate(text),
+    sectionTitle: parsedTask.sectionTitle || "",
+    owner: findOwner(searchText),
+    due: findDate(searchText),
     meetingTitle: title,
     meetingDate: meetingDate.value || getToday(),
     priority: defaultPriority.value || "normal",
-    notes: "",
+    notes,
     category: categoryId,
     done: false,
   };
 }
 
 function organizeSummary() {
-  const lines = splitSummary(summaryInput.value);
-  if (!lines.length) return;
+  const parsedTasks = parseSummary(summaryInput.value);
+  if (!parsedTasks.length) return;
 
   if (!state[activeDepartment]) state[activeDepartment] = createEmptyDepartment();
 
-  lines.forEach((line) => {
-    const categoryId = classifyLine(line);
-    state[activeDepartment][categoryId].unshift(createTask(line, categoryId));
-  });
+  parsedTasks
+    .slice()
+    .reverse()
+    .forEach((parsedTask) => {
+      const categoryId = parsedTask.categoryId || "todo";
+      state[activeDepartment][categoryId].unshift(createTask(parsedTask, categoryId));
+    });
 
   saveState();
   summaryInput.value = "";
-  showToast(`已整理 ${lines.length} 个事项`);
+  showToast(`已整理 ${parsedTasks.length} 个事项`);
   renderBoard();
 }
 
@@ -386,11 +494,11 @@ function renderDepartments() {
     .join("");
   activeDepartmentTitle.textContent = activeDepartment;
   boardDepartmentTitle.textContent = `${activeDepartment} Department`;
+  renderActiveDepartmentStats();
 }
 
 function renderBoard() {
   renderDepartments();
-  renderDepartmentSummary();
   const departmentBoard = state[activeDepartment] || createEmptyDepartment();
 
   listGrid.innerHTML = categories
@@ -403,7 +511,7 @@ function renderBoard() {
                 <div class="task-item${task.done ? " done" : ""}">
                   <input type="checkbox" data-category="${category.id}" data-task="${task.id}" ${task.done ? "checked" : ""} />
                   <button class="task-open" type="button" data-category="${category.id}" data-task="${task.id}">
-                    <span class="task-text">${escapeHtml(task.text)}</span>
+                    <span class="task-title-line">${renderTaskTitle(task)}</span>
                     <span class="task-source">
                       <span>${escapeHtml(task.meetingTitle || "Untitled Meeting")}</span>
                       <span class="priority-pill ${getPriorityClass(task.priority)}">${escapeHtml(priorityLabels[task.priority] || "Normal")}</span>
@@ -447,22 +555,13 @@ function getDepartmentCounts(department) {
   return { openCount, pendingCount, issueCount, doneCount };
 }
 
-function renderDepartmentSummary() {
-  departmentSummary.innerHTML = departments
-    .map((department) => {
-      const counts = getDepartmentCounts(department);
-      return `
-        <button class="summary-card${department === activeDepartment ? " active" : ""}${
-          counts.pendingCount ? " has-pending" : ""
-        }" type="button" data-department="${department}">
-          <strong>${department}</strong>
-          <span>${counts.openCount} open</span>
-          <span>${counts.pendingCount} pending</span>
-          <span>${counts.issueCount} issue</span>
-        </button>
-      `;
-    })
-    .join("");
+function renderActiveDepartmentStats() {
+  const counts = getDepartmentCounts(activeDepartment);
+  activeDepartmentStats.innerHTML = `
+    <span><strong>${counts.openCount}</strong> open</span>
+    <span class="${counts.pendingCount ? "stat-alert" : ""}"><strong>${counts.pendingCount}</strong> pending</span>
+    <span class="${counts.issueCount ? "stat-alert" : ""}"><strong>${counts.issueCount}</strong> issue</span>
+  `;
 }
 
 function renderCompletedTasks(departmentBoard) {
@@ -480,7 +579,7 @@ function renderCompletedTasks(departmentBoard) {
             <div class="task-item done completed-task">
               <input type="checkbox" data-category="${task.categoryId}" data-task="${task.id}" checked />
               <button class="task-open" type="button" data-category="${task.categoryId}" data-task="${task.id}">
-                <span class="task-text">${escapeHtml(task.text)}</span>
+                <span class="task-title-line">${renderTaskTitle(task)}</span>
                 <span class="task-source">
                   <span>${escapeHtml(task.meetingTitle || "Untitled Meeting")}</span>
                   <span class="priority-pill ${getPriorityClass(task.priority)}">${escapeHtml(priorityLabels[task.priority] || "Normal")}</span>
@@ -507,6 +606,7 @@ function openTaskModal(categoryId, taskId) {
   activeTaskRef = { categoryId, taskId };
   modalDepartment.textContent = `${activeDepartment} · ${categories.find((category) => category.id === categoryId)?.title || ""}`;
   modalTaskText.value = task.text || "";
+  modalSectionTitle.value = task.sectionTitle || "";
   modalPriority.value = task.priority || "normal";
   modalOwner.value = task.owner || "";
   modalMeetingTitle.value = task.meetingTitle || "";
@@ -537,6 +637,7 @@ function saveModalTask() {
 
   const task = currentTasks[taskIndex];
   task.text = modalTaskText.value.trim() || task.text;
+  task.sectionTitle = modalSectionTitle.value.trim();
   task.priority = modalPriority.value || "normal";
   task.owner = modalOwner.value.trim();
   task.meetingTitle = modalMeetingTitle.value.trim() || "Untitled Meeting";
@@ -576,6 +677,20 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function renderTaskTitle(task) {
+  const section = normalizeText(task.sectionTitle);
+  const text = normalizeText(task.text);
+  if (!section) return `<span class="task-text">${escapeHtml(text)}</span>`;
+
+  return `
+    <span class="task-text">
+      <span class="task-section-text">${escapeHtml(section)}</span>
+      <span class="task-dash">-</span>
+      <span>${escapeHtml(text)}</span>
+    </span>
+  `;
+}
+
 function getPriorityClass(priority) {
   if (priority === "high") return "priority-high";
   if (priority === "low") return "priority-low";
@@ -591,13 +706,6 @@ function showToast(message) {
 
 departmentTabs.addEventListener("click", (event) => {
   const button = event.target.closest(".department-tab");
-  if (!button) return;
-  activeDepartment = button.dataset.department;
-  renderBoard();
-});
-
-departmentSummary.addEventListener("click", (event) => {
-  const button = event.target.closest(".summary-card");
   if (!button) return;
   activeDepartment = button.dataset.department;
   renderBoard();
