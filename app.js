@@ -1,399 +1,570 @@
-const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR0I8Eh_0_9x-SJawrBKqEmD_uaLYlXPRG4Uqei6RaU2F90PFR9TzZhXszu1X-J5ffx0LGWKkQhx6op/pub?output=csv";
-const OVERALL_TARGET = 11000000;
-const FALLBACK_OVERALL_ACHIEVED = 700000;
-
-const fallbackEvents = [
+const departments = ["BD", "Operation", "Content", "CS"];
+const priorityLabels = {
+  high: "High",
+  normal: "Normal",
+  low: "Low",
+};
+const categories = [
   {
-    month: "4月份",
-    date: "13/4",
-    type: "团购",
-    brand: "Lip Intimate",
-    status: "已谈好",
-    platform: "Website",
-    product: "待补充",
-    package: "待补充",
-    previousSales: "47k",
-    target: "80000",
-    lastSales: "45862",
-    latestSales: "50838",
-    importantNotice: "",
-    notes: "开团至 17/4。",
+    id: "todo",
+    title: "TODO",
+    hint: "需要执行的事项",
+    keywords: [
+      "todo",
+      "to do",
+      "要做",
+      "需要做",
+      "follow up",
+      "跟进",
+      "安排",
+      "准备",
+      "send",
+      "update",
+      "check",
+      "submit",
+      "create",
+      "做",
+    ],
   },
   {
-    month: "4月份",
-    date: "13/4",
-    type: "团购",
-    brand: "Devie",
-    status: "已谈好",
-    platform: "Website",
-    product: "待补充",
-    package: "待补充",
-    previousSales: "58k",
-    target: "100000",
-    lastSales: "54418",
-    latestSales: "63602",
-    importantNotice: "",
-    notes: "开团至 17/4。",
+    id: "pending",
+    title: "Pending / Need Confirm",
+    hint: "还没确认，需要 Coco 决定",
+    keywords: [
+      "pending",
+      "confirm",
+      "need confirm",
+      "decide",
+      "approval",
+      "approve",
+      "coco",
+      "确认",
+      "决定",
+      "待确认",
+      "需要coco",
+      "需要 coco",
+      "老板",
+    ],
   },
   {
-    month: "4月份",
-    date: "13/4",
-    type: "团购",
-    brand: "Begin",
-    status: "已谈好",
-    platform: "Website",
-    product: "待补充",
-    package: "待补充",
-    previousSales: "111k",
-    target: "80000",
-    lastSales: "109061",
-    latestSales: "114589",
-    importantNotice: "",
-    notes: "开团至 17/4。",
-  },
-  {
-    month: "4月份",
-    date: "24/4",
-    type: "专场",
-    brand: "Proya",
-    status: "已谈好",
-    platform: "Lazada",
-    product: "待补充",
-    package: "待补充",
-    previousSales: "305k",
-    target: "320000",
-    lastSales: "264000",
-    latestSales: "275000",
-    importantNotice: "",
-    notes: "开团至 28/4。",
-  },
-  {
-    month: "4月份",
-    date: "24/4",
-    type: "专场",
-    brand: "Red Chamber",
-    status: "已谈好",
-    platform: "Lazada",
-    product: "待补充",
-    package: "待补充",
-    previousSales: "125k",
-    target: "120000",
-    lastSales: "47847",
-    latestSales: "51715",
-    importantNotice: "",
-    notes: "开团至 28/4。",
-  },
-  {
-    month: "5月份",
-    date: "1/5",
-    type: "每月精选",
-    brand: "MGP",
-    status: "已谈好",
-    platform: "Website",
-    product: "每月精选",
-    package: "待补充",
-    previousSales: "",
-    target: "",
-    importantNotice: "",
-    notes: "",
-  },
-  {
-    month: "5月份",
-    date: "8/5",
-    type: "专场",
-    brand: "Kiehl's",
-    status: "已谈好",
-    platform: "Website",
-    product: "专场产品",
-    package: "待补充",
-    previousSales: "93k",
-    target: "",
-    importantNotice: "只能面交不能邮寄！！",
-    notes: "第一场，4/5 开团。",
-  },
-  {
-    month: "5月份",
-    date: "18/5",
-    type: "混场",
-    brand: "Nothing better",
-    status: "Potential",
-    platform: "Lazada",
-    product: "混场产品",
-    package: "待补充",
-    previousSales: "-",
-    target: "80000",
-    importantNotice: "",
-    notes: "第二场，14/5 直播。",
-  },
-  {
-    month: "5月份",
-    date: "18/5",
-    type: "混场",
-    brand: "Popi",
-    status: "已谈好",
-    platform: "Website",
-    product: "混场产品",
-    package: "待补充",
-    previousSales: "32k",
-    target: "60000",
-    importantNotice: "",
-    notes: "第二场，14/5 直播。",
-  },
-  {
-    month: "5月份",
-    date: "28/5",
-    type: "团购",
-    brand: "Lactoday",
-    status: "已谈好",
-    platform: "Shopee / Lazada",
-    product: "团购产品",
-    package: "待补充",
-    previousSales: "109k",
-    target: "100000",
-    importantNotice: "",
-    notes: "第三场，24/5 开卖。",
-  },
-  {
-    month: "5月份",
-    date: "28/5",
-    type: "团购",
-    brand: "Cons",
-    status: "已谈好",
-    platform: "Website",
-    product: "团购产品",
-    package: "待补充",
-    previousSales: "64k",
-    target: "80000",
-    importantNotice: "",
-    notes: "第三场，24/5 开卖。",
-  },
-  {
-    month: "5月份",
-    date: "30/5",
-    type: "混场",
-    brand: "达肤妍",
-    status: "已谈好",
-    platform: "Shopee / Lazada",
-    product: "混场产品",
-    package: "待补充",
-    previousSales: "26k",
-    target: "100000",
-    importantNotice: "",
-    notes: "",
-  },
-  {
-    month: "5月份",
-    date: "30/5",
-    type: "混场",
-    brand: "Mistine",
-    status: "Potential",
-    platform: "Shopee / Lazada",
-    product: "混场产品",
-    package: "待补充",
-    previousSales: "44k",
-    target: "60000",
-    importantNotice: "",
-    notes: "",
-  },
-  {
-    month: "5月份",
-    date: "整月",
-    type: "每月精选",
-    brand: "Greenbio",
-    status: "已谈好",
-    platform: "Website",
-    product: "每月精选",
-    package: "待补充",
-    previousSales: "36k",
-    target: "30000",
-    importantNotice: "",
-    notes: "",
-  },
-  {
-    month: "6月份",
-    date: "待定",
-    type: "线下活动",
-    brand: "环保活动",
-    status: "Potential",
-    platform: "Offline",
-    product: "护肤 / 化妆 / 护发原理分享",
-    package: "待补充",
-    previousSales: "",
-    target: "",
-    importantNotice: "",
-    notes: "让大家更了解护肤、化妆、护发的原理。",
-  },
-  {
-    month: "7月份",
-    date: "待定",
-    type: "周年庆",
-    brand: "Olive young",
-    status: "Potential",
-    platform: "Website",
-    product: "Anua / Olivelemon / 穴位贴",
-    package: "待补充",
-    previousSales: "",
-    target: "",
-    importantNotice: "",
-    notes: "穴位贴是 4 月份 launch，可能还需要再看。",
-  },
-  {
-    month: "10月份",
-    date: "11月",
-    type: "线下活动",
-    brand: "待确认品牌",
-    status: "Potential",
-    platform: "Offline",
-    product: "线下活动",
-    package: "待补充",
-    previousSales: "",
-    target: "",
-    importantNotice: "",
-    notes: "",
+    id: "issues",
+    title: "Issues / Blockers",
+    hint: "卡住的问题",
+    keywords: [
+      "issue",
+      "issues",
+      "blocker",
+      "blocked",
+      "stuck",
+      "delay",
+      "cannot",
+      "can't",
+      "problem",
+      "问题",
+      "卡住",
+      "延迟",
+      "不能",
+      "还没给",
+      "没收到",
+      "缺",
+    ],
   },
 ];
 
-let events = [];
-let selectedMonth = "";
-let selectedDate = "全部";
+const storageKey = "coforyou-meeting-board-v1";
+// Paste the Google Apps Script Web App URL here after deployment.
+const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyUz6zHDX9XzY1PpC0tHdZJg8dAh4Bk3IK0559zQGGzWVlXs3fcaK5RX-tE0lYoOdeLFg/exec";
+let activeDepartment = departments[0];
+let activeTaskRef = null;
+let state = ensureStateShape(loadState());
+let sheetSaveTimer = null;
 
-const monthTabs = document.querySelector("#monthTabs");
-const eventList = document.querySelector("#eventList");
-const eventPanelTitle = document.querySelector("#eventPanelTitle");
-const pipelineTable = document.querySelector("#pipelineTable");
-const pipelineCount = document.querySelector("#pipelineCount");
-const refreshButton = document.querySelector("#refreshButton");
-const syncStatus = document.querySelector("#syncStatus");
-const noticeList = document.querySelector("#noticeList");
-const totalTarget = document.querySelector("#totalTarget");
-const overallAchieved = document.querySelector("#overallAchieved");
-const monthTargetInline = document.querySelector("#monthTargetInline");
+const departmentTabs = document.querySelector("#departmentTabs");
+const departmentSummary = document.querySelector("#departmentSummary");
+const activeDepartmentTitle = document.querySelector("#activeDepartmentTitle");
+const boardDepartmentTitle = document.querySelector("#boardDepartmentTitle");
+const meetingTitle = document.querySelector("#meetingTitle");
+const meetingDate = document.querySelector("#meetingDate");
+const defaultPriority = document.querySelector("#defaultPriority");
+const summaryInput = document.querySelector("#summaryInput");
+const organizeButton = document.querySelector("#organizeButton");
+const clearInputButton = document.querySelector("#clearInputButton");
+const listGrid = document.querySelector("#listGrid");
+const completedList = document.querySelector("#completedList");
+const completedCount = document.querySelector("#completedCount");
+const taskModal = document.querySelector("#taskModal");
+const modalDepartment = document.querySelector("#modalDepartment");
+const modalTaskText = document.querySelector("#modalTaskText");
+const modalCategory = document.querySelector("#modalCategory");
+const modalPriority = document.querySelector("#modalPriority");
+const modalOwner = document.querySelector("#modalOwner");
+const modalMeetingTitle = document.querySelector("#modalMeetingTitle");
+const modalDue = document.querySelector("#modalDue");
+const modalMeetingDate = document.querySelector("#modalMeetingDate");
+const modalNotes = document.querySelector("#modalNotes");
+const closeModalButton = document.querySelector("#closeModalButton");
+const cancelModalButton = document.querySelector("#cancelModalButton");
+const saveTaskButton = document.querySelector("#saveTaskButton");
+const deleteTaskButton = document.querySelector("#deleteTaskButton");
+const toast = document.querySelector("#toast");
 
-function normalizeKey(value) {
-  return String(value || "")
-    .replace(/\s+/g, "")
-    .toLowerCase();
+function getToday() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
 }
 
-function getField(row, aliases) {
-  for (const alias of aliases) {
-    if (row[alias] !== undefined && row[alias] !== "") return row[alias];
+function createEmptyDepartment() {
+  return categories.reduce((items, category) => {
+    items[category.id] = [];
+    return items;
+  }, {});
+}
+
+function loadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey));
+    if (saved) return saved;
+  } catch (error) {
+    // Ignore broken local data and rebuild below.
   }
 
-  const normalizedRow = Object.entries(row).reduce((map, [key, value]) => {
-    map[normalizeKey(key)] = value;
-    return map;
+  return departments.reduce((board, department) => {
+    board[department] = createEmptyDepartment();
+    return board;
+  }, {});
+}
+
+function ensureStateShape(savedState) {
+  const nextState = savedState || {};
+  departments.forEach((department) => {
+    if (!nextState[department]) nextState[department] = createEmptyDepartment();
+    categories.forEach((category) => {
+      if (!Array.isArray(nextState[department][category.id])) nextState[department][category.id] = [];
+    });
+  });
+  return nextState;
+}
+
+function saveState() {
+  saveLocalState();
+  queueSheetSave();
+}
+
+function saveLocalState() {
+  localStorage.setItem(storageKey, JSON.stringify(state));
+}
+
+function flattenState() {
+  return departments.flatMap((department) =>
+    categories.flatMap((category) =>
+      (state[department]?.[category.id] || []).map((task) => ({
+        id: task.id,
+        department,
+        category: category.id,
+        text: task.text || "",
+        owner: task.owner || "",
+        due: task.due || "",
+        meetingTitle: task.meetingTitle || "",
+        meetingDate: task.meetingDate || "",
+        priority: task.priority || "normal",
+        notes: task.notes || "",
+        done: Boolean(task.done),
+        updatedAt: new Date().toISOString(),
+      }))
+    )
+  );
+}
+
+function stateFromRows(rows) {
+  const nextState = departments.reduce((board, department) => {
+    board[department] = createEmptyDepartment();
+    return board;
   }, {});
 
-  for (const alias of aliases) {
-    const value = normalizedRow[normalizeKey(alias)];
-    if (value !== undefined && value !== "") return value;
+  rows.forEach((row) => {
+    const department = normalizeDepartment(row.department);
+    const categoryId = normalizeCategory(row.category);
+    if (!department || !categoryId) return;
+
+    nextState[department][categoryId].push({
+      id: row.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      text: row.text || "",
+      owner: row.owner || "",
+      due: row.due || "",
+      meetingTitle: row.meetingTitle || "Untitled Meeting",
+      meetingDate: row.meetingDate || getToday(),
+      priority: row.priority || "normal",
+      notes: row.notes || "",
+      category: categoryId,
+      done: parseBoolean(row.done),
+    });
+  });
+
+  return ensureStateShape(nextState);
+}
+
+function normalizeDepartment(value) {
+  const text = String(value || "").trim().toLowerCase();
+  return departments.find((department) => department.toLowerCase() === text) || "";
+}
+
+function normalizeCategory(value) {
+  const text = String(value || "").trim().toLowerCase();
+  const matched = categories.find(
+    (category) => category.id === text || category.title.toLowerCase() === text
+  );
+  return matched?.id || "";
+}
+
+function parseBoolean(value) {
+  if (typeof value === "boolean") return value;
+  const text = String(value || "").trim().toLowerCase();
+  return ["true", "yes", "y", "1", "done", "已完成"].includes(text);
+}
+
+function loadSheetState() {
+  if (!SHEET_API_URL) return;
+
+  const callbackName = `coforyouMeetingSheet${Date.now()}${Math.random().toString(16).slice(2)}`;
+  const separator = SHEET_API_URL.includes("?") ? "&" : "?";
+  const script = document.createElement("script");
+  let timeoutId = null;
+
+  function cleanup() {
+    window.clearTimeout(timeoutId);
+    delete window[callbackName];
+    script.remove();
+  }
+
+  window[callbackName] = (data) => {
+    const rows = Array.isArray(data) ? data : data.tasks || [];
+    state = stateFromRows(rows);
+    saveLocalState();
+    renderBoard();
+    showToast("已同步 Google Sheet");
+    cleanup();
+  };
+
+  script.onerror = () => {
+    cleanup();
+    showToast("Sheet 暂时同步不到，先用本地资料");
+  };
+  timeoutId = window.setTimeout(script.onerror, 8000);
+  script.src = `${SHEET_API_URL}${separator}callback=${callbackName}&t=${Date.now()}`;
+  document.body.appendChild(script);
+}
+
+function queueSheetSave() {
+  if (!SHEET_API_URL) return;
+  window.clearTimeout(sheetSaveTimer);
+  sheetSaveTimer = window.setTimeout(saveSheetState, 650);
+}
+
+async function saveSheetState() {
+  if (!SHEET_API_URL) return;
+
+  const payload = JSON.stringify({ tasks: flattenState() });
+  try {
+    await fetch(SHEET_API_URL, {
+      method: "POST",
+      mode: "no-cors",
+      body: new URLSearchParams({ payload }),
+    });
+  } catch (error) {
+    showToast("Sheet 保存失败，已先存在本机");
+  }
+}
+
+function normalizeText(value) {
+  return String(value || "").trim();
+}
+
+function splitSummary(text) {
+  return normalizeText(text)
+    .split(/\n|•|·|。|；|;|\r/g)
+    .map((line) => line.replace(/^[-*\d.)\s]+/, "").trim())
+    .filter(Boolean);
+}
+
+function classifyLine(line) {
+  const explicitCategory = getExplicitCategory(line);
+  if (explicitCategory) return explicitCategory;
+
+  const lower = line.toLowerCase();
+  const categoryScores = categories.map((category) => ({
+    id: category.id,
+    score: category.keywords.filter((keyword) => lower.includes(keyword.toLowerCase())).length,
+  }));
+
+  categoryScores.sort((a, b) => b.score - a.score);
+  return categoryScores[0].score > 0 ? categoryScores[0].id : "todo";
+}
+
+function getExplicitCategory(line) {
+  const lower = line.toLowerCase().trim();
+  const labelMap = [
+    { id: "todo", pattern: "todo|to do" },
+    { id: "pending", pattern: "pending|need confirm|confirm" },
+    { id: "issues", pattern: "issue|issues|blocker|blockers" },
+  ];
+
+  for (const item of labelMap) {
+    const pattern = item.pattern;
+    const leading = new RegExp(`^\\s*(?:\\[|\\(|#)?(?:${pattern})(?:\\]|\\))?\\s*[:：\\-—,，]?\\s+`, "i");
+    const trailing = new RegExp(`\\s*(?:[:：\\-—,，]|\\s)\\s*(?:\\[|\\()?\\s*(?:${pattern})\\s*(?:\\]|\\))?\\s*$`, "i");
+    if (leading.test(lower) || trailing.test(lower)) return item.id;
   }
 
   return "";
 }
 
-function normalizeEvent(row) {
+function stripCategoryLabel(line) {
+  let cleaned = line.trim();
+  const labels = "todo|to do|pending|need confirm|confirm|issue|issues|blocker|blockers";
+  cleaned = cleaned.replace(new RegExp(`^\\s*(?:\\[|\\(|#)?(?:${labels})(?:\\]|\\))?\\s*[:：\\-—,，]?\\s+`, "i"), "");
+  cleaned = cleaned.replace(new RegExp(`\\s*(?:[:：\\-—,，]|\\s)\\s*(?:\\[|\\()?\\s*(?:${labels})\\s*(?:\\]|\\))?\\s*$`, "i"), "");
+  return cleaned.trim();
+}
+
+function findOwner(line) {
+  const ownerMatch =
+    line.match(/(?:owner|pic|负责人)[:：]\s*([A-Za-z\u4e00-\u9fa5 ]{2,18})/i) ||
+    line.match(/@([A-Za-z\u4e00-\u9fa5]{2,18})/);
+  return ownerMatch ? ownerMatch[1].trim() : "负责人待补充";
+}
+
+function findDate(line) {
+  const dateMatch =
+    line.match(/\b\d{1,2}\/\d{1,2}\b/) ||
+    line.match(/\b\d{4}-\d{1,2}-\d{1,2}\b/) ||
+    line.match(/(?:today|tomorrow|friday|monday|tuesday|wednesday|thursday|saturday|sunday|今天|明天|周一|周二|周三|周四|周五|周六|周日)/i);
+  return dateMatch ? dateMatch[0] : "日期待补充";
+}
+
+function createTask(line, categoryId) {
+  const text = stripCategoryLabel(line) || line;
+  const title = meetingTitle.value.trim() || `${activeDepartment} Meeting`;
   return {
-    month: getField(row, ["month", "月份"]),
-    date: getField(row, ["date", "日期", "开团至"]),
-    type: getField(row, ["type", "活动", "活动类型"]),
-    brand: getField(row, ["brand", "brands", "品牌", "BRANDS"]),
-    status: getField(row, ["status", "状态"]) || "Potential",
-    platform: getField(row, ["platform", "平台", "开卖平台"]),
-    product: getField(row, ["product", "产品", "产品/配套"]),
-    package: getField(row, ["package", "配套"]),
-    previousSales: getField(row, ["previousSales", "Previous Sales", "previous sales"]),
-    target: getField(row, ["target", "TARGET", "Target"]),
-    lastSales: getField(row, ["lastSales", "LAST", "Last", "last", "上次Sales", "上次 Sales"]),
-    latestSales: getField(row, [
-      "latestSales",
-      "currentSales",
-      "LATEST",
-      "Latest",
-      "latest",
-      "目前Sales",
-      "目前 Sales",
-      "最新Sales",
-      "最新 Sales",
-      "Sales",
-    ]),
-    importantNotice: getField(row, ["importantNotice", "重要通知", "品牌重要通知", "Important Notice"]),
-    notes: getField(row, ["notes", "重要事项", "Details", "备注"]),
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    text,
+    owner: findOwner(text),
+    due: findDate(text),
+    meetingTitle: title,
+    meetingDate: meetingDate.value || getToday(),
+    priority: defaultPriority.value || "normal",
+    notes: "",
+    category: categoryId,
+    done: false,
   };
 }
 
-function parseCsv(text) {
-  const rows = [];
-  let cell = "";
-  let row = [];
-  let quote = false;
+function organizeSummary() {
+  const lines = splitSummary(summaryInput.value);
+  if (!lines.length) return;
 
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    const next = text[i + 1];
+  if (!state[activeDepartment]) state[activeDepartment] = createEmptyDepartment();
 
-    if (char === '"' && quote && next === '"') {
-      cell += '"';
-      i += 1;
-    } else if (char === '"') {
-      quote = !quote;
-    } else if (char === "," && !quote) {
-      row.push(cell);
-      cell = "";
-    } else if ((char === "\n" || char === "\r") && !quote) {
-      if (cell || row.length) {
-        row.push(cell);
-        rows.push(row);
-      }
-      cell = "";
-      row = [];
-      if (char === "\r" && next === "\n") i += 1;
-    } else {
-      cell += char;
-    }
+  lines.forEach((line) => {
+    const categoryId = classifyLine(line);
+    state[activeDepartment][categoryId].unshift(createTask(line, categoryId));
+  });
+
+  saveState();
+  summaryInput.value = "";
+  showToast(`已整理 ${lines.length} 个事项`);
+  renderBoard();
+}
+
+function renderDepartments() {
+  departmentTabs.innerHTML = departments
+    .map(
+      (department) => `
+        <button class="department-tab${department === activeDepartment ? " active" : ""}" type="button" data-department="${department}">
+          ${department}
+        </button>
+      `
+    )
+    .join("");
+  activeDepartmentTitle.textContent = activeDepartment;
+  boardDepartmentTitle.textContent = `${activeDepartment} Department`;
+}
+
+function renderBoard() {
+  renderDepartments();
+  renderDepartmentSummary();
+  const departmentBoard = state[activeDepartment] || createEmptyDepartment();
+
+  listGrid.innerHTML = categories
+    .map((category) => {
+      const tasks = (departmentBoard[category.id] || []).filter((task) => !task.done);
+      const taskHtml = tasks.length
+        ? tasks
+            .map(
+              (task) => `
+                <div class="task-item${task.done ? " done" : ""}">
+                  <input type="checkbox" data-category="${category.id}" data-task="${task.id}" ${task.done ? "checked" : ""} />
+                  <button class="task-open" type="button" data-category="${category.id}" data-task="${task.id}">
+                    <span class="task-text">${escapeHtml(task.text)}</span>
+                    <span class="task-source">
+                      <span>${escapeHtml(task.meetingTitle || "Untitled Meeting")}</span>
+                      <span class="priority-pill ${getPriorityClass(task.priority)}">${escapeHtml(priorityLabels[task.priority] || "Normal")}</span>
+                    </span>
+                  </button>
+                </div>
+              `
+            )
+            .join("")
+        : `<div class="empty-state">${escapeHtml(category.hint)}</div>`;
+
+      return `
+        <article class="task-list category-${category.id}">
+          <div class="list-title">
+            <div>
+              <strong>${escapeHtml(category.title)}</strong>
+              <p class="eyebrow">${escapeHtml(category.hint)}</p>
+            </div>
+            <span class="count-pill">${tasks.length}</span>
+          </div>
+          <div class="task-items">${taskHtml}</div>
+        </article>
+      `;
+    })
+    .join("");
+  renderCompletedTasks(departmentBoard);
+}
+
+function getDepartmentCounts(department) {
+  const board = state[department] || createEmptyDepartment();
+  const openCount = categories.reduce(
+    (sum, category) => sum + (board[category.id] || []).filter((task) => !task.done).length,
+    0
+  );
+  const pendingCount = (board.pending || []).filter((task) => !task.done).length;
+  const issueCount = (board.issues || []).filter((task) => !task.done).length;
+  const doneCount = categories.reduce(
+    (sum, category) => sum + (board[category.id] || []).filter((task) => task.done).length,
+    0
+  );
+  return { openCount, pendingCount, issueCount, doneCount };
+}
+
+function renderDepartmentSummary() {
+  departmentSummary.innerHTML = departments
+    .map((department) => {
+      const counts = getDepartmentCounts(department);
+      return `
+        <button class="summary-card${department === activeDepartment ? " active" : ""}${
+          counts.pendingCount ? " has-pending" : ""
+        }" type="button" data-department="${department}">
+          <strong>${department}</strong>
+          <span>${counts.openCount} open</span>
+          <span>${counts.pendingCount} pending</span>
+          <span>${counts.issueCount} issue</span>
+        </button>
+      `;
+    })
+    .join("");
+}
+
+function renderCompletedTasks(departmentBoard) {
+  const completedTasks = categories.flatMap((category) =>
+    (departmentBoard[category.id] || [])
+      .filter((task) => task.done)
+      .map((task) => ({ ...task, categoryId: category.id, categoryTitle: category.title }))
+  );
+
+  completedCount.textContent = completedTasks.length;
+  completedList.innerHTML = completedTasks.length
+    ? completedTasks
+        .map(
+          (task) => `
+            <div class="task-item done completed-task">
+              <input type="checkbox" data-category="${task.categoryId}" data-task="${task.id}" checked />
+              <button class="task-open" type="button" data-category="${task.categoryId}" data-task="${task.id}">
+                <span class="task-text">${escapeHtml(task.text)}</span>
+                <span class="task-source">
+                  <span>${escapeHtml(task.meetingTitle || "Untitled Meeting")}</span>
+                  <span class="priority-pill ${getPriorityClass(task.priority)}">${escapeHtml(priorityLabels[task.priority] || "Normal")}</span>
+                </span>
+                <span class="completed-category">${escapeHtml(task.categoryTitle)}</span>
+              </button>
+            </div>
+          `
+        )
+        .join("")
+    : '<div class="empty-state">还没有完成事项。</div>';
+}
+
+function getTask(categoryId, taskId) {
+  const departmentBoard = state[activeDepartment] || createEmptyDepartment();
+  const tasks = departmentBoard[categoryId] || [];
+  return tasks.find((task) => task.id === taskId);
+}
+
+function openTaskModal(categoryId, taskId) {
+  const task = getTask(categoryId, taskId);
+  if (!task) return;
+
+  activeTaskRef = { categoryId, taskId };
+  modalDepartment.textContent = `${activeDepartment} · ${categories.find((category) => category.id === categoryId)?.title || ""}`;
+  modalTaskText.value = task.text || "";
+  modalPriority.value = task.priority || "normal";
+  modalOwner.value = task.owner || "";
+  modalMeetingTitle.value = task.meetingTitle || "";
+  modalDue.value = task.due || "";
+  modalMeetingDate.value = task.meetingDate || getToday();
+  modalNotes.value = task.notes || "";
+  modalCategory.innerHTML = categories
+    .map(
+      (category) =>
+        `<option value="${category.id}" ${category.id === categoryId ? "selected" : ""}>${escapeHtml(category.title)}</option>`
+    )
+    .join("");
+  taskModal.showModal();
+}
+
+function closeTaskModal() {
+  activeTaskRef = null;
+  taskModal.close();
+}
+
+function saveModalTask() {
+  if (!activeTaskRef) return;
+  const { categoryId, taskId } = activeTaskRef;
+  const departmentBoard = state[activeDepartment];
+  const currentTasks = departmentBoard[categoryId] || [];
+  const taskIndex = currentTasks.findIndex((task) => task.id === taskId);
+  if (taskIndex === -1) return;
+
+  const task = currentTasks[taskIndex];
+  task.text = modalTaskText.value.trim() || task.text;
+  task.priority = modalPriority.value || "normal";
+  task.owner = modalOwner.value.trim();
+  task.meetingTitle = modalMeetingTitle.value.trim() || "Untitled Meeting";
+  task.due = modalDue.value.trim();
+  task.meetingDate = modalMeetingDate.value || getToday();
+  task.notes = modalNotes.value.trim();
+
+  const nextCategoryId = modalCategory.value;
+  if (nextCategoryId !== categoryId) {
+    task.category = nextCategoryId;
+    currentTasks.splice(taskIndex, 1);
+    departmentBoard[nextCategoryId].unshift(task);
+    activeTaskRef = { categoryId: nextCategoryId, taskId };
   }
 
-  if (cell || row.length) {
-    row.push(cell);
-    rows.push(row);
-  }
-
-  const headers = rows.shift()?.map((header) => header.trim()) || [];
-  return rows
-    .filter((cells) => cells.some((value) => value.trim()))
-    .map((cells) =>
-      headers.reduce((item, header, index) => {
-        item[header] = (cells[index] || "").trim();
-        return item;
-      }, {})
-    );
+  saveState();
+  renderBoard();
+  closeTaskModal();
 }
 
-function monthNumber(month) {
-  const match = String(month).match(/\d+/);
-  return match ? Number(match[0]) : 99;
-}
-
-function dateNumber(date) {
-  const match = String(date).match(/\d+/);
-  return match ? Number(match[0]) : 999;
-}
-
-function moneyNumber(value) {
-  const raw = String(value ?? "").trim();
-  if (!raw || !/[0-9]/.test(raw)) return 0;
-  const multiplier = /k/i.test(raw) ? 1000 : 1;
-  const numeric = Number(raw.replace(/[^0-9.-]/g, "")) * multiplier;
-  return Number.isFinite(numeric) ? numeric : 0;
-}
-
-function formatMoney(value) {
-  const raw = String(value ?? "").trim();
-  if (!raw) return "-";
-  if (!/[0-9]/.test(raw)) return raw;
-  const numeric = moneyNumber(raw);
-  return `RM ${numeric.toLocaleString("en-MY")}`;
+function deleteModalTask() {
+  if (!activeTaskRef) return;
+  const { categoryId, taskId } = activeTaskRef;
+  const tasks = state[activeDepartment][categoryId] || [];
+  state[activeDepartment][categoryId] = tasks.filter((task) => task.id !== taskId);
+  saveState();
+  renderBoard();
+  closeTaskModal();
 }
 
 function escapeHtml(value) {
@@ -405,350 +576,65 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-function currentMonthName() {
-  const month = new Date().getMonth() + 1;
-  return `${month}月份`;
+function getPriorityClass(priority) {
+  if (priority === "high") return "priority-high";
+  if (priority === "low") return "priority-low";
+  return "priority-normal";
 }
 
-function getMonths() {
-  return [...new Set(events.map((event) => event.month).filter(Boolean))].sort(
-    (a, b) => monthNumber(a) - monthNumber(b)
-  );
+function showToast(message) {
+  toast.textContent = message;
+  toast.classList.add("show");
+  window.clearTimeout(showToast.timer);
+  showToast.timer = window.setTimeout(() => toast.classList.remove("show"), 1800);
 }
 
-function getFilteredEvents() {
-  return events.filter((event) => {
-    const inMonth = !selectedMonth || event.month === selectedMonth;
-    return inMonth;
-  });
-}
-
-function animateMoney(element, target) {
-  const duration = 1400;
-  const start = performance.now();
-
-  function step(now) {
-    const progress = Math.min((now - start) / duration, 1);
-    const eased = 1 - Math.pow(1 - progress, 3);
-    const current = Math.round(target * eased);
-    element.textContent = formatMoney(current);
-
-    if (progress < 1) {
-      requestAnimationFrame(step);
-    }
-  }
-
-  element.classList.remove("is-rolling");
-  void element.offsetWidth;
-  element.classList.add("is-rolling");
-  requestAnimationFrame(step);
-}
-
-function renderMetrics(animateAchieved = false) {
-  const metricMonth = selectedMonth || currentMonthName();
-  const monthEvents = events.filter((event) => event.month === metricMonth);
-  const monthTarget = sumTargets(monthEvents);
-  const monthSales = sumLatestSales(monthEvents);
-  const totalLatestSales = sumLatestSales(events);
-  const achievedValue = totalLatestSales || FALLBACK_OVERALL_ACHIEVED;
-
-  totalTarget.textContent = formatMoney(OVERALL_TARGET);
-  monthTargetInline.innerHTML = `
-    <strong class="month-sales-value">RM 0</strong>
-    <span class="metric-divider">/</span>
-    <strong>${formatMoney(monthTarget)}</strong>
-  `;
-  animateMoney(monthTargetInline.querySelector(".month-sales-value"), monthSales);
-  if (animateAchieved) {
-    animateMoney(overallAchieved, achievedValue);
-  } else {
-    overallAchieved.textContent = formatMoney(achievedValue);
-  }
-}
-
-function renderMonths() {
-  const months = getMonths();
-  if (!selectedMonth) selectedMonth = months[0] || "";
-
-  monthTabs.innerHTML = "";
-  months.forEach((month) => {
-    const button = document.createElement("button");
-    button.className = `month-tab${month === selectedMonth ? " active" : ""}`;
-    button.type = "button";
-    button.textContent = month;
-    button.addEventListener("click", () => {
-      selectedMonth = month;
-      selectedDate = "全部";
-      render();
-    });
-    monthTabs.append(button);
-  });
-}
-
-function renderDates() {
-  selectedDate = "全部";
-}
-
-function groupEventsByDate(items) {
-  return items.reduce((groups, event) => {
-    const date = event.date || "待定";
-    if (!groups.has(date)) groups.set(date, []);
-    groups.get(date).push(event);
-    return groups;
-  }, new Map());
-}
-
-function sumTargets(items) {
-  return items.reduce((sum, event) => {
-    return sum + moneyNumber(event.target);
-  }, 0);
-}
-
-function sumLatestSales(items) {
-  return items.reduce((sum, event) => {
-    return sum + moneyNumber(event.latestSales);
-  }, 0);
-}
-
-function getImportantNotices(items = events) {
-  return items.filter((event) => event.importantNotice && event.importantNotice.trim());
-}
-
-function uniqueValues(items, key) {
-  return [...new Set(items.map((item) => item[key]).filter(Boolean))];
-}
-
-function isConfirmedEvent(event) {
-  return event.status.includes("已谈好") || event.status.toLowerCase().includes("confirmed");
-}
-
-function statusClass(event) {
-  return isConfirmedEvent(event) ? "confirmed-brand" : "potential-brand";
-}
-
-function sortByBrandStatus(items) {
-  return [...items].sort((a, b) => {
-    if (isConfirmedEvent(a) === isConfirmedEvent(b)) return 0;
-    return isConfirmedEvent(a) ? -1 : 1;
-  });
-}
-
-function renderNoticeBoard() {
-  const notices = getImportantNotices(events);
-
-  if (!notices.length) {
-    noticeList.innerHTML = '<div class="notice-marquee"><div class="notice-track">暂无重要通知</div></div>';
-    return;
-  }
-
-  const marqueeText = notices
-    .map((event) => `${event.brand || "未命名品牌"}：${event.importantNotice}`)
-    .join("     ·     ");
-  noticeList.innerHTML = `
-    <div class="notice-marquee">
-      <div class="notice-track">${escapeHtml(`${marqueeText}     ·     ${marqueeText}`)}</div>
-    </div>
-  `;
-}
-
-function renderEvents() {
-  const filtered = getFilteredEvents().sort((a, b) => dateNumber(a.date) - dateNumber(b.date));
-  const grouped = [...groupEventsByDate(filtered).entries()].sort((a, b) => dateNumber(a[0]) - dateNumber(b[0]));
-  const eventIds = new Map(filtered.map((event, index) => [event, `brand-detail-${index}`]));
-  eventPanelTitle.textContent = `${selectedMonth}排期`;
-  eventList.innerHTML = "";
-
-  if (!filtered.length) {
-    eventList.innerHTML = '<div class="empty-state">暂时没有符合条件的活动。</div>';
-    return;
-  }
-
-  const sortedMonthEvents = sortByBrandStatus(filtered);
-  const brandNav = document.createElement("section");
-  brandNav.className = "month-brand-nav";
-  brandNav.innerHTML = `
-    <div>
-      <h3>开卖品牌</h3>
-    </div>
-    <div class="month-brand-list">
-      ${sortedMonthEvents
-        .map(
-          (event) => `
-            <button class="month-brand-link ${statusClass(event)}" type="button" data-target="${eventIds.get(event)}">
-              ${escapeHtml(event.brand || "未命名品牌")}
-            </button>
-          `
-        )
-        .join("")}
-    </div>
-  `;
-  eventList.append(brandNav);
-
-  grouped.forEach(([date, dateEvents], index) => {
-    const target = sumTargets(dateEvents);
-    const activityTypes = uniqueValues(dateEvents, "type");
-    const sortedDateEvents = sortByBrandStatus(dateEvents);
-    const brandTags = sortedDateEvents
-      .map(
-        (event) =>
-          `<span class="summary-brand-pill ${statusClass(event)}">${escapeHtml(event.brand || "未命名品牌")}</span>`
-      )
-      .join("");
-    const dateBlock = document.createElement("details");
-    dateBlock.className = "date-accordion";
-    dateBlock.open = index === 0;
-    dateBlock.innerHTML = `
-      <summary class="date-summary">
-        <span class="date-mark">${escapeHtml(date)}</span>
-        <span class="date-title">${brandTags || `${dateEvents.length} 个品牌`}</span>
-        <span class="date-meta">${activityTypes
-          .map((type) => `<span class="summary-type-pill">${escapeHtml(type)}</span>`)
-          .join("")}</span>
-        <span class="date-target">${formatMoney(target)}</span>
-      </summary>
-      <div class="brand-accordion-list"></div>
-    `;
-
-    const brandList = dateBlock.querySelector(".brand-accordion-list");
-    sortedDateEvents.forEach((event, eventIndex) => {
-      const isConfirmed = isConfirmedEvent(event);
-      const brandBlock = document.createElement("details");
-      brandBlock.className = "brand-disclosure";
-      brandBlock.id = eventIds.get(event);
-      brandBlock.open = false;
-      brandBlock.innerHTML = `
-        <summary class="brand-summary">
-          <span class="type-pill">${escapeHtml(event.type || "活动")}</span>
-          <strong class="brand-name ${statusClass(event)}">${escapeHtml(event.brand || "未命名品牌")}</strong>
-          <span class="status-pill ${isConfirmed ? "confirmed" : "potential"}">${escapeHtml(event.status || "Potential")}</span>
-          ${
-            event.importantNotice
-              ? '<button class="notice-button has-notice" type="button">重要通知</button>'
-              : ""
-          }
-          <span class="brand-platform">${escapeHtml(event.platform || "-")}</span>
-          <span class="brand-target">${formatMoney(event.target)}</span>
-        </summary>
-        <div class="brand-details">
-          <span class="detail-status-pill ${isConfirmed ? "confirmed" : "potential"}">${escapeHtml(
-            event.status || "Potential"
-          )}</span>
-          ${
-            event.importantNotice
-              ? `<div class="notice-alert"><strong>重要通知</strong><p>${escapeHtml(event.importantNotice)}</p></div>`
-              : ""
-          }
-          <dl class="details-grid">
-            <div>
-              <dt>产品</dt>
-              <dd>${escapeHtml(event.product || "-")}</dd>
-            </div>
-            <div>
-              <dt>配套</dt>
-              <dd>${escapeHtml(event.package || "-")}</dd>
-            </div>
-            <div>
-              <dt>Previous</dt>
-              <dd>${escapeHtml(event.previousSales || "-")}</dd>
-            </div>
-            <div>
-              <dt>目前 Sales</dt>
-              <dd>${escapeHtml(event.latestSales || "-")}</dd>
-            </div>
-          </dl>
-          <p class="notes">${escapeHtml(event.notes || "暂无重要事项。")}</p>
-        </div>
-      `;
-      brandList.append(brandBlock);
-    });
-    eventList.append(dateBlock);
-  });
-}
-
-function renderPipeline() {
-  const filtered = getFilteredEvents();
-  pipelineCount.textContent = `${filtered.length} 个品牌`;
-  pipelineTable.innerHTML = "";
-
-  filtered.forEach((event) => {
-    const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${event.month || "-"}</td>
-      <td>${event.date || "-"}</td>
-      <td>${event.type || "-"}</td>
-      <td><strong>${event.brand || "-"}</strong></td>
-      <td>${event.status || "-"}</td>
-      <td>${event.platform || "-"}</td>
-      <td>${[event.product, event.package].filter(Boolean).join("<br>") || "-"}</td>
-      <td>${event.previousSales || "-"}</td>
-      <td>${formatMoney(event.target)}</td>
-      <td>${event.latestSales || "-"}</td>
-      <td>${event.importantNotice || "-"}</td>
-      <td>${event.notes || "-"}</td>
-    `;
-    pipelineTable.append(row);
-  });
-}
-
-function render(animateAchieved = false) {
-  renderNoticeBoard();
-  renderMonths();
-  renderMetrics(animateAchieved);
-  renderDates();
-  renderEvents();
-  renderPipeline();
-}
-
-async function loadData() {
-  if (!SHEET_CSV_URL) {
-    events = fallbackEvents;
-    syncStatus.textContent = "coforyou GOGOGO!";
-    render(true);
-    return;
-  }
-
-  syncStatus.textContent = "coforyou GOGOGO!";
-  try {
-    const response = await fetch(`${SHEET_CSV_URL}${SHEET_CSV_URL.includes("?") ? "&" : "?"}v=${Date.now()}`);
-    if (!response.ok) throw new Error("Sheet fetch failed");
-    const text = await response.text();
-    events = parseCsv(text).map(normalizeEvent);
-    syncStatus.textContent = "coforyou GOGOGO!";
-  } catch (error) {
-    events = fallbackEvents;
-    syncStatus.textContent = "coforyou GOGOGO!";
-  }
-  render(true);
-}
-
-refreshButton.addEventListener("click", loadData);
-
-eventList.addEventListener("click", (event) => {
-  const brandLink = event.target.closest(".month-brand-link");
-  if (brandLink) {
-    const brandBlock = document.getElementById(brandLink.dataset.target);
-    if (!brandBlock) return;
-    const dateBlock = brandBlock.closest(".date-accordion");
-    if (dateBlock) dateBlock.open = true;
-    brandBlock.open = true;
-    requestAnimationFrame(() => {
-      brandBlock.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
-    brandBlock.classList.add("notice-focus");
-    window.setTimeout(() => brandBlock.classList.remove("notice-focus"), 900);
-    return;
-  }
-
-  const button = event.target.closest(".notice-button");
-  if (!button || button.disabled) return;
-
-  event.preventDefault();
-  event.stopPropagation();
-
-  const brandBlock = button.closest(".brand-disclosure");
-  brandBlock.open = true;
-  brandBlock.classList.add("notice-focus");
-  window.setTimeout(() => brandBlock.classList.remove("notice-focus"), 900);
+departmentTabs.addEventListener("click", (event) => {
+  const button = event.target.closest(".department-tab");
+  if (!button) return;
+  activeDepartment = button.dataset.department;
+  renderBoard();
 });
 
-loadData();
+departmentSummary.addEventListener("click", (event) => {
+  const button = event.target.closest(".summary-card");
+  if (!button) return;
+  activeDepartment = button.dataset.department;
+  renderBoard();
+});
+
+document.addEventListener("change", (event) => {
+  const checkbox = event.target.closest('input[type="checkbox"]');
+  if (!checkbox || !checkbox.dataset.category || !checkbox.dataset.task) return;
+
+  const departmentBoard = state[activeDepartment];
+  const tasks = departmentBoard[checkbox.dataset.category] || [];
+  const task = tasks.find((item) => item.id === checkbox.dataset.task);
+  if (!task) return;
+  task.done = checkbox.checked;
+  saveState();
+  renderBoard();
+});
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest(".task-open");
+  if (!button) return;
+  openTaskModal(button.dataset.category, button.dataset.task);
+});
+
+organizeButton.addEventListener("click", organizeSummary);
+clearInputButton.addEventListener("click", () => {
+  summaryInput.value = "";
+});
+closeModalButton.addEventListener("click", closeTaskModal);
+cancelModalButton.addEventListener("click", closeTaskModal);
+saveTaskButton.addEventListener("click", saveModalTask);
+deleteTaskButton.addEventListener("click", deleteModalTask);
+
+taskModal.addEventListener("click", (event) => {
+  if (event.target === taskModal) closeTaskModal();
+});
+
+meetingDate.value = getToday();
+renderBoard();
+loadSheetState();

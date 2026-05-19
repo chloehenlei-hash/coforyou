@@ -3,90 +3,142 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-    <meta http-equiv="Pragma" content="no-cache" />
-    <meta http-equiv="Expires" content="0" />
-    <title>Coforyou Live Calendar</title>
-    <link rel="stylesheet" href="./styles.css?v=20260428-3" />
+    <title>Coforyou Meeting Board</title>
+    <link rel="stylesheet" href="./styles.css?v=20260519-1" />
   </head>
   <body>
     <header class="topbar">
       <div>
-        <p class="eyebrow">COFORYOU BRAND UPDATE</p>
-        <h1>直播 / 团购 / 活动排期</h1>
+        <p class="eyebrow">COFORYOU MEETING BOARD</p>
+        <h1>Meeting 重点整理</h1>
       </div>
-      <div class="topbar-actions">
-        <button class="icon-button" id="refreshButton" type="button" title="刷新数据" aria-label="刷新数据">
-          ↻
-        </button>
-        <div class="sync-status" id="syncStatus">coforyou GOGOGO!</div>
-      </div>
+      <div class="topbar-note">Paste summary, auto checklist.</div>
     </header>
 
     <main>
-      <section class="summary-grid target-summary" aria-label="总览">
-        <article class="metric highlight">
-          <span>总 Target</span>
-          <strong id="totalTarget">RM 0</strong>
-        </article>
-        <article class="metric achieved-card">
-          <span>目前达到</span>
-          <strong id="overallAchieved">RM 0</strong>
-        </article>
-      </section>
+      <section class="department-tabs" id="departmentTabs" aria-label="部门"></section>
+      <section class="department-summary" id="departmentSummary" aria-label="部门数字总览"></section>
 
-      <section class="notice-board" id="noticeBoard" aria-label="品牌重要通知">
-        <div class="notice-list" id="noticeList"></div>
-      </section>
-
-      <section class="control-row" aria-label="筛选">
-        <div class="month-tabs" id="monthTabs"></div>
-      </section>
-
-      <section class="workspace">
-        <section class="event-panel">
-          <div class="panel-heading split">
-            <div>
-              <h2 id="eventPanelTitle">全部活动</h2>
-            </div>
-            <span class="month-target-pill" id="monthTargetInline">月份 Target RM 0</span>
-          </div>
-          <div class="event-list" id="eventList"></div>
-        </section>
-      </section>
-
-      <details class="pipeline-section">
-        <summary class="panel-heading split">
+      <section class="input-panel">
+        <div class="panel-title">
           <div>
-            <p class="eyebrow">BRAND PIPELINE</p>
-            <h2>完整品牌表</h2>
+            <p class="eyebrow">MEETING SUMMARY</p>
+            <h2 id="activeDepartmentTitle">BD</h2>
           </div>
-          <span class="muted" id="pipelineCount">0 个品牌</span>
-        </summary>
-        <div class="brand-table-wrap">
-          <table class="brand-table">
-            <thead>
-              <tr>
-                <th>月份</th>
-                <th>日期</th>
-                <th>活动</th>
-                <th>品牌</th>
-                <th>状态</th>
-                <th>平台</th>
-                <th>产品 / 配套</th>
-                <th>Previous Sales</th>
-                <th>Target</th>
-                <th>目前 Sales</th>
-                <th>重要通知</th>
-                <th>重要事项</th>
-              </tr>
-            </thead>
-            <tbody id="pipelineTable"></tbody>
-          </table>
         </div>
-      </details>
+
+        <div class="meeting-meta">
+          <label class="field compact-field">
+            <span>Meeting Title</span>
+            <input id="meetingTitle" type="text" placeholder="例如：5月 BD Weekly Meeting" />
+          </label>
+          <label class="field compact-field">
+            <span>Meeting Date</span>
+            <input id="meetingDate" type="date" />
+          </label>
+          <label class="field compact-field">
+            <span>Default Priority</span>
+            <select id="defaultPriority">
+              <option value="normal">Normal</option>
+              <option value="high">High</option>
+              <option value="low">Low</option>
+            </select>
+          </label>
+        </div>
+
+        <textarea
+          id="summaryInput"
+          placeholder="把 meeting summary 直接 paste 在这里。比如：&#10;BD follow up Kiehl's rate card by Friday.&#10;Need Coco confirm whether to accept Red Chamber package.&#10;Blocker: brand has not sent product list."
+        ></textarea>
+
+        <div class="button-row">
+          <button class="primary-button" id="organizeButton" type="button">自动整理</button>
+          <button class="ghost-button" id="clearInputButton" type="button">清空输入</button>
+        </div>
+      </section>
+
+      <section class="board-header">
+        <div>
+          <p class="eyebrow">ACTION LISTS</p>
+          <h2 id="boardDepartmentTitle">BD Department</h2>
+        </div>
+      </section>
+
+      <section class="list-grid" id="listGrid"></section>
+
+      <section class="completed-section">
+        <div class="completed-heading">
+          <div>
+            <p class="eyebrow">DONE</p>
+            <h2>已完成</h2>
+          </div>
+          <span class="count-pill" id="completedCount">0</span>
+        </div>
+        <div class="completed-list" id="completedList"></div>
+      </section>
     </main>
 
-    <script src="./app.js?v=20260428-3"></script>
+    <dialog class="task-modal" id="taskModal">
+      <form class="modal-card" method="dialog">
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow" id="modalDepartment">BD</p>
+            <h2>事项详情</h2>
+          </div>
+          <button class="modal-close" id="closeModalButton" type="button" aria-label="关闭">×</button>
+        </div>
+
+        <label class="field">
+          <span>事项</span>
+          <textarea id="modalTaskText"></textarea>
+        </label>
+
+        <div class="modal-grid">
+          <label class="field">
+            <span>分类</span>
+            <select id="modalCategory"></select>
+          </label>
+          <label class="field">
+            <span>Priority</span>
+            <select id="modalPriority">
+              <option value="normal">Normal</option>
+              <option value="high">High</option>
+              <option value="low">Low</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>负责人</span>
+            <input id="modalOwner" type="text" />
+          </label>
+          <label class="field">
+            <span>Meeting Title</span>
+            <input id="modalMeetingTitle" type="text" />
+          </label>
+          <label class="field">
+            <span>日期</span>
+            <input id="modalDue" type="text" />
+          </label>
+          <label class="field">
+            <span>Meeting Date</span>
+            <input id="modalMeetingDate" type="date" />
+          </label>
+        </div>
+
+        <label class="field">
+          <span>更多备注</span>
+          <textarea id="modalNotes" placeholder="可以补充 context、link、下一步、Coco 决定等。"></textarea>
+        </label>
+
+        <div class="modal-actions">
+          <button class="danger-button" id="deleteTaskButton" type="button">删除</button>
+          <button class="ghost-button" id="cancelModalButton" type="button">取消</button>
+          <button class="primary-button" id="saveTaskButton" type="button">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="./app.js?v=20260519-1"></script>
   </body>
 </html>

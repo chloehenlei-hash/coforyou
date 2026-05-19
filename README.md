@@ -1,39 +1,43 @@
-# Coforyou Live Calendar
+# Coforyou Meeting Board
 
-这是 Coforyou 内部用的直播、团购、活动排期网站原型。当前版本不需要安装任何东西，直接打开 `index.html` 就能看。
+这个 folder 是给团队记录 meeting 重点的网页。
 
-## Google Sheet 数据格式
+## Upload 去 GitHub
 
-建议 Google Sheet 第一行使用这些栏位：
+上传整个 `meeting-board` folder：
 
-| month | date | type | brand | status | platform | product | package | previousSales | target | importantNotice | notes |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 5月份 | 8/5 | 专场 | Kiehl's | 已谈好 | Website | 专场产品 | 待补充 | 93k |  | 只能面交不能邮寄！！ | 4/5 开团 |
+- `meeting-board/index.html`
+- `meeting-board/styles.css`
+- `meeting-board/app.js`
+- `meeting-board/google-apps-script.js`
+- `meeting-board/README.md`
 
-也可以使用中文栏位：月份、日期、活动、品牌、状态、平台、产品、配套、Previous Sales、TARGET、重要通知、重要事项。
+如果 GitHub Pages 已经开了，网址会像这样：
+
+`https://chloehenlei-hash.github.io/coforyou/meeting-board/`
 
 ## 连接 Google Sheet
 
-1. 在 Google Sheet 选择 `File > Share > Publish to web`。
-2. 选择要发布的 Sheet，并选择 `Comma-separated values (.csv)`。
-3. 复制发布出来的 CSV 链接。
-4. 打开 `app.js`，把最上面的链接改成：
+1. 新开一个 Google Sheet。
+2. 去 `Extensions` -> `Apps Script`。
+3. 把 `google-apps-script.js` 里面的内容全部复制进去。
+4. 点 `Deploy` -> `New deployment`。
+5. Type 选择 `Web app`。
+6. `Execute as` 选择 `Me`。
+7. `Who has access` 选择 `Anyone with the link`。
+8. Deploy 后复制 `Web app URL`。
+9. 打开 `meeting-board/app.js`，把链接放进这里：
 
 ```js
-const SHEET_CSV_URL = "你的 Google Sheet CSV 链接";
+const SHEET_API_URL = "PASTE_YOUR_WEB_APP_URL_HERE";
 ```
 
-保存后刷新网页即可。
+10. 重新上传 `meeting-board/app.js` 到 GitHub。
 
-`SHEET_CSV_URL` 是网站读取资料用的公开 CSV 链接。团队编辑资料时，直接进入原本的 Google Sheet 编辑即可。
+连接好后，网页会自动从 Sheet 读取资料；团队在网页新增、编辑、打勾、删除事项后，也会同步回同一个 Sheet。
 
-## 当前页面功能
+## Sheet Columns
 
-- 按月份分类查看活动。
-- 按日期查看同一天开卖的不同品牌。
-- 区分 `已谈好` 和 `Potential` 品牌。
-- 展示产品、配套、平台、Previous Sales、Target、重要事项。
-- 顶部显示 `品牌重要通知 ❗️` 跑马灯；点开可看全部品牌重要通知。
-- 每个品牌格子里有 `重要通知` 按钮，有通知的品牌会高亮。
-- 支持搜索品牌、产品和备注。
-- 自动计算品牌数量和总 Target。
+Apps Script 会自动建立这些 columns：
+
+`id, department, category, text, owner, due, meetingTitle, meetingDate, priority, notes, done, updatedAt`
