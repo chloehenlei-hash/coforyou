@@ -112,13 +112,10 @@ const completedCount = document.querySelector("#completedCount");
 const taskModal = document.querySelector("#taskModal");
 const modalDepartment = document.querySelector("#modalDepartment");
 const modalTaskText = document.querySelector("#modalTaskText");
-const modalSectionTitle = document.querySelector("#modalSectionTitle");
 const modalCategory = document.querySelector("#modalCategory");
 const modalPriority = document.querySelector("#modalPriority");
-const modalOwner = document.querySelector("#modalOwner");
 const modalMeetingTitle = document.querySelector("#modalMeetingTitle");
 const modalDue = document.querySelector("#modalDue");
-const modalMeetingDate = document.querySelector("#modalMeetingDate");
 const modalNotes = document.querySelector("#modalNotes");
 const closeModalButton = document.querySelector("#closeModalButton");
 const cancelModalButton = document.querySelector("#cancelModalButton");
@@ -301,17 +298,16 @@ function normalizeText(value) {
 function parseSummary(text) {
   const rawLines = normalizeText(text)
     .split(/\n|\r/g)
-    .map((line) => line.trim())
-    .filter(Boolean);
+    .map((line) => line.replace(/[\u2060]/g, ""))
+    .filter((line) => line.trim());
   const tasks = [];
   let currentCategory = "todo";
-  let currentSection = "";
   let currentTask = null;
 
-  rawLines.forEach((rawLine, index) => {
+  rawLines.forEach((rawLine) => {
     if (isSeparatorLine(rawLine)) return;
 
-    const bullet = isBulletLine(rawLine);
+    const trimmedLine = rawLine.trim();
     const line = cleanSummaryLine(rawLine);
     if (!line) return;
 
@@ -322,36 +318,25 @@ function parseSummary(text) {
       return;
     }
 
-    if (!bullet && isSectionLine(line, rawLines, index)) {
-      currentSection = stripLeadingNumber(line);
-      currentTask = null;
-      return;
-    }
-
     const actionTask = parseActionTask(line);
-    if (actionTask) {
-      currentTask = addParsedTask(tasks, actionTask.title, explicitCategory || currentCategory, currentSection);
+    if (!isDescriptionLine(rawLine) && actionTask) {
+      currentTask = addParsedTask(tasks, actionTask.title, explicitCategory || currentCategory);
       if (actionTask.detail) currentTask.details.push(actionTask.detail);
       return;
     }
 
-    if (bullet) {
+    if (isDescriptionLine(rawLine) || (currentTask && isDetailLine(trimmedLine))) {
       if (currentTask) {
-        currentTask.details.push(line);
+        currentTask.details.push(cleanDescriptionLine(rawLine));
       } else {
-        currentTask = addParsedTask(tasks, line, currentCategory, currentSection);
+        currentTask = addParsedTask(tasks, cleanDescriptionLine(rawLine), explicitCategory || currentCategory);
       }
       return;
     }
 
-    if (currentTask && isDetailLine(line)) {
-      currentTask.details.push(line);
-      return;
-    }
-
     const categoryId = explicitCategory || currentCategory || classifyLine(line);
-    const taskText = stripCategoryLabel(stripLeadingNumber(line));
-    currentTask = addParsedTask(tasks, taskText, categoryId || currentCategory, currentSection);
+    const taskText = stripCategoryLabel(line);
+    currentTask = addParsedTask(tasks, taskText, categoryId || currentCategory);
   });
 
   return tasks;
@@ -420,11 +405,11 @@ function findDate(line) {
   return dateMatch ? dateMatch[0] : "日期待补充";
 }
 
-function addParsedTask(tasks, text, categoryId, sectionTitle) {
+function addParsedTask(tasks, text, categoryId) {
   const task = {
     text: text || "待补充事项",
     categoryId,
-    sectionTitle,
+    sectionTitle: "",
     details: [],
   };
   tasks.push(task);
@@ -449,8 +434,26 @@ function isDetailLine(line) {
   return continuationPrefixes.some((prefix) => cleaned.toLowerCase().startsWith(prefix.toLowerCase()));
 }
 
-function isBulletLine(line) {
-  return /^\s*(?:[-*•·]|[▪◦○●]|[🌟⭐️✅])/.test(line);
+function isDescriptionLine(line) {
+  const raw = String(line || "");
+  const trimmed = raw.trim();
+  if (!trimmed) return false;
+  if (/^\s+/.test(raw)) return true;
+  if (/^https?:\/\//i.test(trimmed)) return true;
+  if (/^\s*(?:[-*•·]|[▪◦○●]|[🌟⭐️✅])/.test(raw)) return true;
+  if (/^\s*(?:\d+\s*[.)、。]|\d+\u20e3\ufe0f?)/.test(raw)) return true;
+  if (/^\s*[A-Za-z]\s*[.)、:：-]/.test(raw)) return true;
+  return false;
+}
+
+function cleanDescriptionLine(line) {
+  return String(line || "")
+    .replace(/[\u2060]/g, "")
+    .trim()
+    .replace(/^\s*(?:[-*•·]|[▪◦○●]|[🌟⭐️✅])\s*/u, "")
+    .replace(/^\s*(?:\d+\s*[.)、。]|\d+\u20e3\ufe0f?)\s*/, "")
+    .replace(/^\s*[A-Za-z]\s*[.)、:：-]\s*/, "")
+    .trim();
 }
 
 function isSeparatorLine(line) {
@@ -461,31 +464,6 @@ function cleanSummaryLine(line) {
   return line
     .replace(/[\u2060]/g, "")
     .replace(/^\s*(?:[-*•·]|[▪◦○●]|[🌟⭐️✅])\s*/u, "")
-    .trim();
-}
-
-function isSectionLine(line, rawLines, index) {
-  const cleaned = stripLeadingNumber(line);
-  const nextLine = rawLines.slice(index + 1).find((item) => !isSeparatorLine(item));
-  const nextCleaned = nextLine ? cleanSummaryLine(nextLine) : "";
-  const hasNumber = line !== cleaned;
-  const shortHeading = cleaned.length <= 22 && !/[，,。~～]/.test(cleaned);
-  const nextLooksNumberedTask = nextCleaned && hasLeadingNumber(nextCleaned);
-  const nextLooksLikeChild =
-    nextCleaned && !isBulletLine(nextLine) && !getExplicitCategory(nextCleaned) && !hasLeadingNumber(nextCleaned);
-  const namedSection = /^(this week task|product department|community|community\s*&\s*客服|客服|周年庆|直播流程|直播流程\s*&\s*准备)$/i.test(cleaned);
-
-  return (hasNumber && shortHeading && nextLooksLikeChild) || (!hasNumber && shortHeading && nextLooksNumberedTask) || namedSection;
-}
-
-function hasLeadingNumber(line) {
-  return /^\s*(?:\d+\s*[.)。、]?|\d+\u20e3\ufe0f?)\s*/.test(line);
-}
-
-function stripLeadingNumber(line) {
-  return line
-    .replace(/^\s*\d+\s*[.)。、]?\s*/, "")
-    .replace(/^\s*\d+\u20e3\ufe0f?\s*/, "")
     .trim();
 }
 
@@ -529,25 +507,19 @@ function renderPreview() {
                 <span class="preview-number">${index + 1}</span>
                 <button class="preview-remove" type="button" data-preview-remove="${index}">移除</button>
               </div>
-              <div class="preview-grid">
-                <label class="field">
-                  <span>分类</span>
-                  <select data-preview-field="categoryId">
-                    ${categories
-                      .map(
-                        (category) =>
-                          `<option value="${category.id}" ${category.id === task.categoryId ? "selected" : ""}>${escapeHtml(
-                            category.title
-                          )}</option>`
-                      )
-                      .join("")}
-                  </select>
-                </label>
-                <label class="field">
-                  <span>主标题 / Section</span>
-                  <input data-preview-field="sectionTitle" type="text" value="${escapeAttribute(task.sectionTitle || "")}" />
-                </label>
-              </div>
+              <label class="field">
+                <span>分类</span>
+                <select data-preview-field="categoryId">
+                  ${categories
+                    .map(
+                      (category) =>
+                        `<option value="${category.id}" ${category.id === task.categoryId ? "selected" : ""}>${escapeHtml(
+                          category.title
+                        )}</option>`
+                    )
+                    .join("")}
+                </select>
+              </label>
               <label class="field">
                 <span>外面会显示的事项</span>
                 <input data-preview-field="text" type="text" value="${escapeAttribute(task.text || "")}" />
@@ -569,7 +541,7 @@ function collectPreviewTasks() {
       const getField = (field) => item.querySelector(`[data-preview-field="${field}"]`)?.value.trim() || "";
       return {
         categoryId: getField("categoryId") || "todo",
-        sectionTitle: getField("sectionTitle"),
+        sectionTitle: "",
         text: getField("text") || "待补充事项",
         details: getField("details")
           .split("\n")
@@ -736,12 +708,9 @@ function openTaskModal(categoryId, taskId) {
   activeTaskRef = { categoryId, taskId };
   modalDepartment.textContent = `${activeDepartment} · ${categories.find((category) => category.id === categoryId)?.title || ""}`;
   modalTaskText.value = task.text || "";
-  modalSectionTitle.value = task.sectionTitle || "";
   modalPriority.value = task.priority || "normal";
-  modalOwner.value = task.owner || "";
   modalMeetingTitle.value = task.meetingTitle || "";
   modalDue.value = task.due || "";
-  modalMeetingDate.value = task.meetingDate || getToday();
   modalNotes.value = task.notes || "";
   modalCategory.innerHTML = categories
     .map(
@@ -767,12 +736,10 @@ function saveModalTask() {
 
   const task = currentTasks[taskIndex];
   task.text = modalTaskText.value.trim() || task.text;
-  task.sectionTitle = modalSectionTitle.value.trim();
+  task.sectionTitle = "";
   task.priority = modalPriority.value || "normal";
-  task.owner = modalOwner.value.trim();
   task.meetingTitle = modalMeetingTitle.value.trim() || "Untitled Meeting";
   task.due = modalDue.value.trim();
-  task.meetingDate = modalMeetingDate.value || getToday();
   task.notes = modalNotes.value.trim();
 
   const nextCategoryId = modalCategory.value;
@@ -812,17 +779,8 @@ function escapeAttribute(value) {
 }
 
 function renderTaskTitle(task) {
-  const section = normalizeText(task.sectionTitle);
   const text = normalizeText(task.text);
-  if (!section) return `<span class="task-text">${escapeHtml(text)}</span>`;
-
-  return `
-    <span class="task-text">
-      <span class="task-section-text">${escapeHtml(section)}</span>
-      <span class="task-dash">-</span>
-      <span>${escapeHtml(text)}</span>
-    </span>
-  `;
+  return `<span class="task-text">${escapeHtml(text)}</span>`;
 }
 
 function getPriorityClass(priority) {
