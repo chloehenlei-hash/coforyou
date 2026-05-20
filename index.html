@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Coforyou Meeting Board</title>
-    <link rel="stylesheet" href="./styles.css?v=20260519-7" />
+    <link rel="stylesheet" href="./styles.css?v=20260520-6" />
   </head>
   <body>
     <header class="topbar">
@@ -18,7 +18,7 @@
     <main>
       <section class="department-tabs" id="departmentTabs" aria-label="部门"></section>
 
-      <section class="input-panel">
+      <section class="input-panel" id="inputPanel">
         <div class="panel-title">
           <div>
             <p class="eyebrow">MEETING SUMMARY</p>
@@ -70,7 +70,7 @@
         </section>
       </section>
 
-      <section class="board-header">
+      <section class="board-header" id="boardHeader">
         <div>
           <p class="eyebrow">ACTION LISTS</p>
           <h2 id="boardDepartmentTitle">BD Department</h2>
@@ -80,7 +80,7 @@
 
       <section class="list-grid" id="listGrid"></section>
 
-      <section class="completed-section">
+      <section class="completed-section" id="completedSection">
         <div class="completed-heading">
           <div>
             <p class="eyebrow">DONE</p>
@@ -89,6 +89,13 @@
           <span class="count-pill" id="completedCount">0</span>
         </div>
         <div class="completed-list" id="completedList"></div>
+      </section>
+
+      <section class="coco-pending-view" id="cocoPendingView" hidden>
+        <div class="coco-pending-toolbar">
+          <span>需要 Coco 确认：<strong id="cocoPendingTotal">0</strong></span>
+        </div>
+        <div class="coco-pending-list" id="cocoPendingList"></div>
       </section>
     </main>
 
@@ -145,6 +152,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <script src="./app.js?v=20260519-7"></script>
+    <script src="./app.js?v=20260520-6"></script>
   </body>
 </html>

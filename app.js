@@ -1,6 +1,6 @@
 const departments = ["BD", "Operation", "Content", "CS"];
 const priorityLabels = {
-  high: "High",
+  high: "High Priority",
   normal: "Normal",
   low: "Low",
 };
@@ -76,9 +76,12 @@ const storageKey = "coforyou-meeting-board-v1";
 const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyUz6zHDX9XzY1PpC0tHdZJg8dAh4Bk3IK0559zQGGzWVlXs3fcaK5RX-tE0lYoOdeLFg/exec";
 let activeDepartment = departments[0];
 let activeTaskRef = null;
+let currentView = "board";
 let state = ensureStateShape(loadState());
 let sheetSaveTimer = null;
 let pendingPreviewTasks = [];
+let recentTaskIds = new Set();
+let lastCocoPendingCount = null;
 
 const continuationPrefixes = [
   "后续优化",
@@ -93,6 +96,8 @@ const continuationPrefixes = [
 ];
 
 const departmentTabs = document.querySelector("#departmentTabs");
+const inputPanel = document.querySelector("#inputPanel");
+const boardHeader = document.querySelector("#boardHeader");
 const activeDepartmentStats = document.querySelector("#activeDepartmentStats");
 const activeDepartmentTitle = document.querySelector("#activeDepartmentTitle");
 const boardDepartmentTitle = document.querySelector("#boardDepartmentTitle");
@@ -107,8 +112,12 @@ const previewList = document.querySelector("#previewList");
 const confirmPreviewButton = document.querySelector("#confirmPreviewButton");
 const cancelPreviewButton = document.querySelector("#cancelPreviewButton");
 const listGrid = document.querySelector("#listGrid");
+const completedSection = document.querySelector("#completedSection");
 const completedList = document.querySelector("#completedList");
 const completedCount = document.querySelector("#completedCount");
+const cocoPendingView = document.querySelector("#cocoPendingView");
+const cocoPendingList = document.querySelector("#cocoPendingList");
+const cocoPendingTotal = document.querySelector("#cocoPendingTotal");
 const taskModal = document.querySelector("#taskModal");
 const modalDepartment = document.querySelector("#modalDepartment");
 const modalTaskText = document.querySelector("#modalTaskText");
@@ -184,7 +193,8 @@ function flattenState() {
         priority: task.priority || "normal",
         notes: task.notes || "",
         done: Boolean(task.done),
-        updatedAt: new Date().toISOString(),
+        cocoEmailSentAt: task.cocoEmailSentAt || "",
+        updatedAt: task.updatedAt || new Date().toISOString(),
       }))
     )
   );
@@ -213,6 +223,8 @@ function stateFromRows(rows) {
       notes: row.notes || "",
       category: categoryId,
       done: parseBoolean(row.done),
+      cocoEmailSentAt: row.cocoEmailSentAt || "",
+      updatedAt: row.updatedAt || new Date().toISOString(),
     });
   });
 
@@ -484,6 +496,8 @@ function createTask(parsedTask, categoryId) {
     notes,
     category: categoryId,
     done: false,
+    cocoEmailSentAt: "",
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -566,7 +580,9 @@ function confirmPreviewTasks() {
     .reverse()
     .forEach((parsedTask) => {
       const categoryId = parsedTask.categoryId || "todo";
-      state[activeDepartment][categoryId].unshift(createTask(parsedTask, categoryId));
+      const task = createTask(parsedTask, categoryId);
+      recentTaskIds.add(task.id);
+      state[activeDepartment][categoryId].unshift(task);
     });
 
   saveState();
@@ -576,6 +592,10 @@ function confirmPreviewTasks() {
   summaryInput.value = "";
   showToast(`已加入 ${previewTasks.length} 个事项`);
   renderBoard();
+  window.setTimeout(() => {
+    recentTaskIds.clear();
+    renderBoard();
+  }, 1800);
 }
 
 function cancelPreview() {
@@ -585,45 +605,62 @@ function cancelPreview() {
 }
 
 function renderDepartments() {
-  departmentTabs.innerHTML = departments
-    .map(
-      (department) => `
-        <button class="department-tab${department === activeDepartment ? " active" : ""}" type="button" data-department="${department}">
-          ${department}
+  const departmentButtons = departments
+    .map((department) => {
+      const mood = getDepartmentMood(department);
+      return `
+        <button class="department-tab${currentView === "board" && department === activeDepartment ? " active" : ""}" type="button" data-department="${department}">
+          <span>${department}</span>
+          <small class="${mood.className}">${mood.label}</small>
         </button>
-      `
-    )
+      `;
+    })
     .join("");
+  departmentTabs.innerHTML = `
+    ${departmentButtons}
+    <button class="coco-pending-button${currentView === "coco" ? " active" : ""}" id="cocoPendingButton" type="button" data-coco-pending>
+      Coco Pending <span id="cocoPendingBadge">0</span>
+    </button>
+  `;
   activeDepartmentTitle.textContent = activeDepartment;
   boardDepartmentTitle.textContent = `${activeDepartment} Department`;
   renderActiveDepartmentStats();
+  renderCocoPendingBadge();
 }
 
 function renderBoard() {
   renderDepartments();
+  setViewVisibility();
+  if (currentView === "coco") {
+    renderCocoPendingView();
+    return;
+  }
+
   const departmentBoard = state[activeDepartment] || createEmptyDepartment();
 
   listGrid.innerHTML = categories
     .map((category) => {
-      const tasks = (departmentBoard[category.id] || []).filter((task) => !task.done);
+      const tasks = sortTasksByPriority((departmentBoard[category.id] || []).filter((task) => !task.done));
       const taskHtml = tasks.length
         ? tasks
             .map(
               (task) => `
-                <div class="task-item${task.done ? " done" : ""}">
+                <div class="${getTaskCardClass(task)}">
                   <input type="checkbox" data-category="${category.id}" data-task="${task.id}" ${task.done ? "checked" : ""} />
-                  <button class="task-open" type="button" data-category="${category.id}" data-task="${task.id}">
+                  <button class="task-open" type="button" data-department="${activeDepartment}" data-category="${category.id}" data-task="${task.id}">
                     <span class="task-title-line">${renderTaskTitle(task)}</span>
                     <span class="task-source">
                       <span>${escapeHtml(task.meetingTitle || "Untitled Meeting")}</span>
                       <span class="priority-pill ${getPriorityClass(task.priority)}">${escapeHtml(priorityLabels[task.priority] || "Normal")}</span>
+                      <span>${escapeHtml(formatUpdatedAt(task.updatedAt))}</span>
                     </span>
+                    ${task.notes ? `<span class="task-note-peek">${escapeHtml(getNotePreview(task.notes))}</span>` : ""}
                   </button>
                 </div>
               `
             )
             .join("")
-        : `<div class="empty-state">${escapeHtml(category.hint)}</div>`;
+        : `<div class="empty-state">${escapeHtml(getEmptyStateText(category.id))}</div>`;
 
       return `
         <article class="task-list category-${category.id}">
@@ -657,6 +694,14 @@ function getDepartmentCounts(department) {
   return { openCount, pendingCount, issueCount, doneCount };
 }
 
+function getDepartmentMood(department) {
+  const counts = getDepartmentCounts(department);
+  if (counts.pendingCount) return { label: `${counts.pendingCount} Coco`, className: "mood-alert" };
+  if (counts.issueCount) return { label: `${counts.issueCount} issue`, className: "mood-alert" };
+  if (counts.openCount) return { label: `${counts.openCount} open`, className: "mood-live" };
+  return { label: "clear", className: "mood-clear" };
+}
+
 function renderActiveDepartmentStats() {
   const counts = getDepartmentCounts(activeDepartment);
   activeDepartmentStats.innerHTML = `
@@ -664,6 +709,73 @@ function renderActiveDepartmentStats() {
     <span class="${counts.pendingCount ? "stat-alert" : ""}"><strong>${counts.pendingCount}</strong> pending</span>
     <span class="${counts.issueCount ? "stat-alert" : ""}"><strong>${counts.issueCount}</strong> issue</span>
   `;
+}
+
+function setViewVisibility() {
+  const isCocoView = currentView === "coco";
+  inputPanel.hidden = isCocoView;
+  boardHeader.hidden = isCocoView;
+  listGrid.hidden = isCocoView;
+  completedSection.hidden = isCocoView;
+  cocoPendingView.hidden = !isCocoView;
+}
+
+function getCocoPendingTasks() {
+  return sortTasksByPriority(
+    departments.flatMap((department) =>
+      (state[department]?.pending || [])
+      .filter((task) => !task.done)
+      .map((task) => ({ ...task, department, categoryId: "pending" }))
+    )
+  );
+}
+
+function renderCocoPendingBadge() {
+  const count = getCocoPendingTasks().length;
+  const badge = document.querySelector("#cocoPendingBadge");
+  const button = document.querySelector("#cocoPendingButton");
+  if (badge) badge.textContent = count;
+  if (button) {
+    button.classList.toggle("has-items", count > 0);
+    if (lastCocoPendingCount !== null && count !== lastCocoPendingCount) {
+      button.classList.remove("badge-bounce");
+      void button.offsetWidth;
+      button.classList.add("badge-bounce");
+    }
+  }
+  lastCocoPendingCount = count;
+}
+
+function renderCocoPendingView() {
+  const pendingTasks = getCocoPendingTasks();
+  cocoPendingTotal.textContent = pendingTasks.length;
+  cocoPendingList.innerHTML = pendingTasks.length
+    ? pendingTasks
+        .map(
+          (task) => `
+            <article class="${getTaskCardClass(task, "coco-pending-card")}">
+              <div class="coco-card-top">
+                <span class="department-pill">${escapeHtml(task.department)}</span>
+                <span class="priority-pill ${getPriorityClass(task.priority)}">${escapeHtml(priorityLabels[task.priority] || "Normal")}</span>
+              </div>
+              <button class="task-open coco-task-open" type="button" data-department="${escapeAttribute(task.department)}" data-category="pending" data-task="${escapeAttribute(task.id)}">
+                <span class="task-title-line">${renderTaskTitle(task)}</span>
+                <span class="task-source">
+                  <span>${escapeHtml(task.meetingTitle || "Untitled Meeting")}</span>
+                  ${task.due ? `<span>Due ${escapeHtml(task.due)}</span>` : ""}
+                  <span>${escapeHtml(formatUpdatedAt(task.updatedAt))}</span>
+                </span>
+              </button>
+              ${task.notes ? `<p class="coco-note-preview">${escapeHtml(task.notes.slice(0, 180))}</p>` : ""}
+              <label class="coco-done">
+                <input type="checkbox" data-department="${escapeAttribute(task.department)}" data-category="pending" data-task="${escapeAttribute(task.id)}" />
+                <span>已处理</span>
+              </label>
+            </article>
+          `
+        )
+        .join("")
+    : '<div class="empty-state">No Coco decision needed. Clear for now.</div>';
 }
 
 function renderCompletedTasks(departmentBoard) {
@@ -680,11 +792,12 @@ function renderCompletedTasks(departmentBoard) {
           (task) => `
             <div class="task-item done completed-task">
               <input type="checkbox" data-category="${task.categoryId}" data-task="${task.id}" checked />
-              <button class="task-open" type="button" data-category="${task.categoryId}" data-task="${task.id}">
+              <button class="task-open" type="button" data-department="${activeDepartment}" data-category="${task.categoryId}" data-task="${task.id}">
                 <span class="task-title-line">${renderTaskTitle(task)}</span>
                 <span class="task-source">
                   <span>${escapeHtml(task.meetingTitle || "Untitled Meeting")}</span>
                   <span class="priority-pill ${getPriorityClass(task.priority)}">${escapeHtml(priorityLabels[task.priority] || "Normal")}</span>
+                  <span>${escapeHtml(formatUpdatedAt(task.updatedAt))}</span>
                 </span>
                 <span class="completed-category">${escapeHtml(task.categoryTitle)}</span>
               </button>
@@ -692,21 +805,21 @@ function renderCompletedTasks(departmentBoard) {
           `
         )
         .join("")
-    : '<div class="empty-state">还没有完成事项。</div>';
+    : '<div class="empty-state">Done list is empty for now.</div>';
 }
 
-function getTask(categoryId, taskId) {
-  const departmentBoard = state[activeDepartment] || createEmptyDepartment();
+function getTask(department, categoryId, taskId) {
+  const departmentBoard = state[department] || createEmptyDepartment();
   const tasks = departmentBoard[categoryId] || [];
   return tasks.find((task) => task.id === taskId);
 }
 
-function openTaskModal(categoryId, taskId) {
-  const task = getTask(categoryId, taskId);
+function openTaskModal(categoryId, taskId, department = activeDepartment) {
+  const task = getTask(department, categoryId, taskId);
   if (!task) return;
 
-  activeTaskRef = { categoryId, taskId };
-  modalDepartment.textContent = `${activeDepartment} · ${categories.find((category) => category.id === categoryId)?.title || ""}`;
+  activeTaskRef = { department, categoryId, taskId };
+  modalDepartment.textContent = `${department} · ${categories.find((category) => category.id === categoryId)?.title || ""}`;
   modalTaskText.value = task.text || "";
   modalPriority.value = task.priority || "normal";
   modalMeetingTitle.value = task.meetingTitle || "";
@@ -728,8 +841,8 @@ function closeTaskModal() {
 
 function saveModalTask() {
   if (!activeTaskRef) return;
-  const { categoryId, taskId } = activeTaskRef;
-  const departmentBoard = state[activeDepartment];
+  const { department, categoryId, taskId } = activeTaskRef;
+  const departmentBoard = state[department];
   const currentTasks = departmentBoard[categoryId] || [];
   const taskIndex = currentTasks.findIndex((task) => task.id === taskId);
   if (taskIndex === -1) return;
@@ -741,13 +854,14 @@ function saveModalTask() {
   task.meetingTitle = modalMeetingTitle.value.trim() || "Untitled Meeting";
   task.due = modalDue.value.trim();
   task.notes = modalNotes.value.trim();
+  task.updatedAt = new Date().toISOString();
 
   const nextCategoryId = modalCategory.value;
   if (nextCategoryId !== categoryId) {
     task.category = nextCategoryId;
     currentTasks.splice(taskIndex, 1);
     departmentBoard[nextCategoryId].unshift(task);
-    activeTaskRef = { categoryId: nextCategoryId, taskId };
+    activeTaskRef = { department, categoryId: nextCategoryId, taskId };
   }
 
   saveState();
@@ -757,9 +871,9 @@ function saveModalTask() {
 
 function deleteModalTask() {
   if (!activeTaskRef) return;
-  const { categoryId, taskId } = activeTaskRef;
-  const tasks = state[activeDepartment][categoryId] || [];
-  state[activeDepartment][categoryId] = tasks.filter((task) => task.id !== taskId);
+  const { department, categoryId, taskId } = activeTaskRef;
+  const tasks = state[department][categoryId] || [];
+  state[department][categoryId] = tasks.filter((task) => task.id !== taskId);
   saveState();
   renderBoard();
   closeTaskModal();
@@ -783,10 +897,63 @@ function renderTaskTitle(task) {
   return `<span class="task-text">${escapeHtml(text)}</span>`;
 }
 
+function sortTasksByPriority(tasks) {
+  const priorityRank = { high: 0, normal: 1, low: 2 };
+  return tasks.slice().sort((a, b) => {
+    const priorityDiff = (priorityRank[a.priority] ?? 1) - (priorityRank[b.priority] ?? 1);
+    if (priorityDiff) return priorityDiff;
+    return String(b.id || "").localeCompare(String(a.id || ""));
+  });
+}
+
+function getEmptyStateText(categoryId) {
+  if (categoryId === "todo") return "Clear for now. No action needed.";
+  if (categoryId === "pending") return "No Coco decision needed.";
+  if (categoryId === "issues") return "No blockers. Good.";
+  return "Nothing here yet.";
+}
+
+function getNotePreview(notes) {
+  const firstLine = String(notes || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+  if (!firstLine) return "";
+  return firstLine.length > 96 ? `${firstLine.slice(0, 96)}...` : firstLine;
+}
+
+function formatUpdatedAt(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "Updated now";
+  const diffMs = Date.now() - date.getTime();
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffDays <= 0) return "Updated today";
+  if (diffDays === 1) return "Updated 1d ago";
+  if (diffDays < 7) return `Updated ${diffDays}d ago`;
+  return `Updated ${date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}`;
+}
+
 function getPriorityClass(priority) {
   if (priority === "high") return "priority-high";
   if (priority === "low") return "priority-low";
   return "priority-normal";
+}
+
+function getPriorityItemClass(priority) {
+  if (priority === "high") return "priority-item-high";
+  if (priority === "low") return "priority-item-low";
+  return "priority-item-normal";
+}
+
+function getTaskCardClass(task, baseClass = "task-item") {
+  return [
+    baseClass,
+    getPriorityItemClass(task.priority),
+    task.done ? "done" : "",
+    recentTaskIds.has(task.id) ? "task-new" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function showToast(message) {
@@ -797,9 +964,18 @@ function showToast(message) {
 }
 
 departmentTabs.addEventListener("click", (event) => {
+  const pendingButton = event.target.closest("[data-coco-pending]");
+  if (pendingButton) {
+    currentView = "coco";
+    cancelPreview();
+    renderBoard();
+    return;
+  }
+
   const button = event.target.closest(".department-tab");
   if (!button) return;
   activeDepartment = button.dataset.department;
+  currentView = "board";
   renderBoard();
 });
 
@@ -807,11 +983,25 @@ document.addEventListener("change", (event) => {
   const checkbox = event.target.closest('input[type="checkbox"]');
   if (!checkbox || !checkbox.dataset.category || !checkbox.dataset.task) return;
 
-  const departmentBoard = state[activeDepartment];
+  const department = checkbox.dataset.department || activeDepartment;
+  const departmentBoard = state[department];
   const tasks = departmentBoard[checkbox.dataset.category] || [];
   const task = tasks.find((item) => item.id === checkbox.dataset.task);
   if (!task) return;
+  if (checkbox.checked && !task.done) {
+    const card = checkbox.closest(".task-item, .coco-pending-card");
+    if (card) card.classList.add("task-completing");
+    showToast("Done. Moving to completed.");
+    window.setTimeout(() => {
+      task.done = true;
+      task.updatedAt = new Date().toISOString();
+      saveState();
+      renderBoard();
+    }, 240);
+    return;
+  }
   task.done = checkbox.checked;
+  task.updatedAt = new Date().toISOString();
   saveState();
   renderBoard();
 });
@@ -819,7 +1009,7 @@ document.addEventListener("change", (event) => {
 document.addEventListener("click", (event) => {
   const button = event.target.closest(".task-open");
   if (!button) return;
-  openTaskModal(button.dataset.category, button.dataset.task);
+  openTaskModal(button.dataset.category, button.dataset.task, button.dataset.department || activeDepartment);
 });
 
 organizeButton.addEventListener("click", organizeSummary);
