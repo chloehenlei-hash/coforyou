@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Coforyou Meeting Board</title>
-    <link rel="stylesheet" href="./styles.css?v=20260520-6" />
+    <link rel="stylesheet" href="./styles.css?v=20260526-1" />
   </head>
   <body>
     <header class="topbar">
@@ -12,11 +12,44 @@
         <p class="eyebrow">COFORYOU MEETING BOARD</p>
         <h1>Meeting 重点整理</h1>
       </div>
-      <div class="topbar-note">Paste summary, auto checklist.</div>
+      <div class="topbar-controls">
+        <label class="palette-field">
+          <span>色系</span>
+          <select id="paletteSelect" aria-label="选择网站色系">
+            <option value="cream">Red Cream</option>
+            <option value="mono">Black White</option>
+            <option value="sunny">Yellow Blue</option>
+            <option value="colorful">Colorful</option>
+            <option value="green">Green</option>
+            <option value="blue">Blue</option>
+          </select>
+        </label>
+        <div class="topbar-note">Paste summary, auto checklist.</div>
+      </div>
     </header>
 
     <main>
-      <section class="department-tabs" id="departmentTabs" aria-label="部门"></section>
+      <section class="department-tabs" id="departmentTabs" aria-label="部门">
+        <button class="department-tab active" type="button" data-department="BD">
+          <span>BD</span>
+          <small class="mood-clear">clear</small>
+        </button>
+        <button class="department-tab" type="button" data-department="Operation">
+          <span>Operation</span>
+          <small class="mood-clear">clear</small>
+        </button>
+        <button class="department-tab" type="button" data-department="Content">
+          <span>Content</span>
+          <small class="mood-clear">clear</small>
+        </button>
+        <button class="department-tab" type="button" data-department="CS">
+          <span>CS</span>
+          <small class="mood-clear">clear</small>
+        </button>
+        <button class="coco-pending-button" id="cocoPendingButton" type="button" data-coco-pending>
+          Coco Pending <span id="cocoPendingBadge">0</span>
+        </button>
+      </section>
 
       <section class="input-panel" id="inputPanel">
         <div class="panel-title">
@@ -70,6 +103,49 @@
         </section>
       </section>
 
+      <section class="minutes-panel" id="minutesPanel">
+        <div class="minutes-compose">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">MEETING MINUTES</p>
+              <h2>会议记录</h2>
+            </div>
+            <span class="lock-note">保存后不能修改</span>
+          </div>
+          <div class="meeting-meta minutes-meta">
+            <label class="field compact-field">
+              <span>Minutes Title</span>
+              <input id="minutesTitle" type="text" placeholder="例如：5月26日 BD 周会" />
+            </label>
+            <label class="field compact-field">
+              <span>Meeting Date</span>
+              <input id="minutesDate" type="date" />
+            </label>
+          </div>
+          <textarea
+            id="minutesInput"
+            placeholder="开会时可以直接记录 meeting minutes。保存后会锁定，只能查看，不能再编辑。"
+          ></textarea>
+          <div class="button-row">
+            <button class="primary-button" id="saveMinutesButton" type="button">保存会议记录</button>
+            <button class="ghost-button" id="clearMinutesButton" type="button">清空记录</button>
+          </div>
+        </div>
+
+        <div class="minutes-archive">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">ARCHIVE</p>
+              <h2>记录库</h2>
+            </div>
+            <button class="ghost-button" id="toggleMinutesArchiveButton" type="button">
+              查看会议记录 <span id="minutesCount">0</span>
+            </button>
+          </div>
+          <div class="minutes-list" id="minutesList" hidden></div>
+        </div>
+      </section>
+
       <section class="board-header" id="boardHeader">
         <div>
           <p class="eyebrow">ACTION LISTS</p>
@@ -78,7 +154,44 @@
         <div class="active-stats" id="activeDepartmentStats" aria-label="当前部门数字"></div>
       </section>
 
-      <section class="list-grid" id="listGrid"></section>
+      <section class="list-grid" id="listGrid">
+        <article class="task-list category-todo">
+          <div class="list-title">
+            <div>
+              <strong>TODO</strong>
+              <p class="eyebrow">需要执行的事项</p>
+            </div>
+            <span class="count-pill">0</span>
+          </div>
+          <div class="task-items">
+            <div class="empty-state">Clear for now. No action needed.</div>
+          </div>
+        </article>
+        <article class="task-list category-pending">
+          <div class="list-title">
+            <div>
+              <strong>Pending / Need Confirm</strong>
+              <p class="eyebrow">还没确认，需要 Coco 决定</p>
+            </div>
+            <span class="count-pill">0</span>
+          </div>
+          <div class="task-items">
+            <div class="empty-state">No Coco decision needed.</div>
+          </div>
+        </article>
+        <article class="task-list category-issues">
+          <div class="list-title">
+            <div>
+              <strong>Issues / Blockers</strong>
+              <p class="eyebrow">卡住的问题</p>
+            </div>
+            <span class="count-pill">0</span>
+          </div>
+          <div class="task-items">
+            <div class="empty-state">No blockers. Good.</div>
+          </div>
+        </article>
+      </section>
 
       <section class="completed-section" id="completedSection">
         <div class="completed-heading">
@@ -150,8 +263,26 @@
       </form>
     </dialog>
 
+    <dialog class="task-modal" id="minutesModal">
+      <form class="modal-card" method="dialog">
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow" id="minutesModalDepartment">BD</p>
+            <h2 id="minutesModalTitle">会议记录</h2>
+          </div>
+          <button class="modal-close" id="closeMinutesModalButton" type="button" aria-label="关闭">×</button>
+        </div>
+        <div class="minutes-read-meta" id="minutesModalMeta"></div>
+        <pre class="minutes-read-body" id="minutesModalBody"></pre>
+        <div class="modal-actions">
+          <button class="primary-button" id="closeMinutesModalFooterButton" type="button">关闭</button>
+        </div>
+      </form>
+    </dialog>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <script src="./app.js?v=20260520-6"></script>
+    <script src="./app.js?v=20260526-2"></script>
+    <script src="./sync-guard.js?v=20260526-1"></script>
   </body>
 </html>
