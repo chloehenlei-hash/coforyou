@@ -2,6 +2,8 @@ const SHEET_NAME = "Meeting Board";
 const MINUTES_SHEET_NAME = "Meeting Minutes";
 const LIVE_SHEET_NAME = "Live Meeting";
 const COCO_EMAIL = "PASTE_COCO_EMAIL_HERE";
+const GEMINI_MODEL = "gemini-3.5-flash";
+const GEMINI_FALLBACK_MODEL = "gemini-2.5-flash";
 const HEADERS = [
   "id",
   "department",
@@ -83,7 +85,6 @@ function doPost(event) {
   const payloadText = event.parameter.payload || (event.postData && event.postData.contents) || "{}";
   const payload = JSON.parse(payloadText);
   const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
-  const minutes = Array.isArray(payload.minutes) ? payload.minutes.map(ensureMinuteSummary) : [];
   const liveParticipants = Array.isArray(payload.liveParticipants) ? payload.liveParticipants : [];
   const sheet = getSheet();
   const rows = tasks.map((task) => HEADERS.map((header) => normalizeCell(task[header])));
@@ -95,6 +96,8 @@ function doPost(event) {
   }
 
   const minutesSheet = getMinutesSheet();
+  const currentMinutes = readSheetObjects(minutesSheet, MINUTES_HEADERS);
+  const minutes = Array.isArray(payload.minutes) ? mergeMinuteSummaries(currentMinutes, payload.minutes) : [];
   const minutesRows = minutes.map((item) => MINUTES_HEADERS.map((header) => normalizeCell(item[header])));
   minutesSheet.clearContents();
   minutesSheet.getRange(1, 1, 1, MINUTES_HEADERS.length).setValues([MINUTES_HEADERS]);
@@ -111,7 +114,14 @@ function doPost(event) {
     liveSheet.getRange(2, 1, liveRows.length, LIVE_HEADERS.length).setValues(liveRows);
   }
 
-  return jsonResponse({ ok: true, count: rows.length, minutesCount: minutesRows.length, liveCount: liveRows.length });
+  return jsonResponse({
+    ok: true,
+    count: rows.length,
+    minutesCount: minutesRows.length,
+    liveCount: liveRows.length,
+    minutes,
+    liveParticipants: mergedLiveParticipants,
+  });
 }
 
 function sendCocoPendingEmailReminders() {
@@ -238,12 +248,44 @@ function mergeLiveParticipants(currentRows, incomingRows) {
   return Object.keys(byId).map((id) => byId[id]);
 }
 
-function ensureMinuteSummary(item) {
+function mergeMinuteSummaries(currentRows, incomingRows) {
+  const currentById = {};
+  const currentByKey = {};
+  currentRows.forEach((item) => {
+    if (!item) return;
+    if (item.id) currentById[item.id] = item;
+    currentByKey[getMinuteKey(item)] = item;
+  });
+
+  return incomingRows.map((item) => {
+    const existing = currentById[item.id] || currentByKey[getMinuteKey(item)];
+    return ensureMinuteSummary(item, existing);
+  });
+}
+
+function getMinuteKey(item) {
+  return [
+    item && item.department,
+    item && item.meetingDate,
+    item && item.title,
+    item && item.participantName,
+  ]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .join("|");
+}
+
+function ensureMinuteSummary(item, existing) {
   if (!item || !item.minutes) return item;
-  const aiSummary = generateGeminiSummary(item.minutes, item.title || "Meeting");
-  if (aiSummary) {
-    return Object.assign({}, item, { summary: aiSummary });
+  const sameMinutes = existing && normalizeSummarySource(existing.minutes) === normalizeSummarySource(item.minutes);
+
+  if (sameMinutes && existing.summary && !isFallbackSummary(existing.summary)) {
+    return Object.assign({}, item, { summary: existing.summary });
   }
+
+  const aiSummary = generateGeminiSummary(item.minutes, item.title || "Meeting");
+  if (aiSummary) return Object.assign({}, item, { summary: aiSummary });
+  if (item.summary && !isFallbackSummary(item.summary)) return item;
+  if (sameMinutes && existing.summary) return Object.assign({}, item, { summary: existing.summary });
   if (item.summary) return item;
   return Object.assign({}, item, {
     summary: generateRuleBasedSummary(item.minutes, item.title || "Meeting"),
@@ -261,30 +303,78 @@ function generateGeminiSummary(minutes, title) {
   if (!key) return "";
 
   const prompt = [
-    "你是 Coforyou 的会议记录助理。请用中文整理以下 meeting minutes。",
-    "输出格式必须是：会议重点、Action Items、需要 Coco 确认、Issues / Blockers。",
+    "你是 Coforyou 的会议记录助理。请用中文把以下原始 meeting minutes 整理成更完整、更清楚、更适合管理层阅读的会议纪要。",
+    "不要只是照抄原文。请归纳重点、补齐上下文、合并重复内容，并保留品牌名、人名、日期、金额、平台、deadline 等关键细节。",
+    "如果原文没有写负责人或 deadline，请写「负责人待确认」或「Deadline 待确认」，不要乱编。",
+    "输出格式必须完全跟着下面结构：",
+    "会议重点：",
+    "- 3 到 6 点，讲清楚会议在讨论什么、目前进度和已达成的决定。",
+    "",
+    "Action Items：",
+    "- 每一点用「负责人 - 要做什么（Deadline: ...）」格式；没有负责人就写「负责人待确认」。",
+    "",
+    "需要 Coco 确认：",
+    "- 只列需要 Coco 做决定、approve、确认方向或价格的事项。",
+    "",
+    "Issues / Blockers：",
+    "- 列出卡住、资料不足、客户未回复、时间风险、执行风险。",
+    "",
+    "下一步：",
+    "- 1 到 3 点，写会议结束后最应该马上做的事。",
     `Meeting: ${title}`,
     "",
+    "原始 meeting minutes：",
     minutes,
   ].join("\n");
 
   try {
-    const response = UrlFetchApp.fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,
-      {
-        method: "post",
-        contentType: "application/json",
-        muteHttpExceptions: true,
-        payload: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      }
-    );
-    const data = JSON.parse(response.getContentText());
-    return data.candidates && data.candidates[0] && data.candidates[0].content
-      ? data.candidates[0].content.parts.map((part) => part.text || "").join("\n").trim()
-      : "";
+    return callGeminiInteractions(key, prompt) || callGeminiGenerateContent(key, prompt);
   } catch (error) {
     return "";
   }
+}
+
+function callGeminiInteractions(key, prompt) {
+  const response = UrlFetchApp.fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+    method: "post",
+    contentType: "application/json",
+    headers: {
+      "x-goog-api-key": key,
+    },
+    muteHttpExceptions: true,
+    payload: JSON.stringify({
+      model: GEMINI_MODEL,
+      input: prompt,
+    }),
+  });
+  if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) return "";
+  const data = JSON.parse(response.getContentText());
+  return String(data.output_text || "").trim();
+}
+
+function callGeminiGenerateContent(key, prompt) {
+  const response = UrlFetchApp.fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_FALLBACK_MODEL}:generateContent?key=${key}`,
+    {
+      method: "post",
+      contentType: "application/json",
+      muteHttpExceptions: true,
+      payload: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+    }
+  );
+  if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) return "";
+  const data = JSON.parse(response.getContentText());
+  return data.candidates && data.candidates[0] && data.candidates[0].content
+    ? data.candidates[0].content.parts.map((part) => part.text || "").join("\n").trim()
+    : "";
+}
+
+function normalizeSummarySource(value) {
+  return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function isFallbackSummary(summary) {
+  return /^(整理摘要|AI Summary)\s*-/i.test(String(summary || "").trim());
 }
 
 function generateRuleBasedSummary(minutes, title) {

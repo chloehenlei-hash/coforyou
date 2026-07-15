@@ -86,6 +86,7 @@ let state = ensureStateShape(loadState());
 let meetingMinutes = ensureMinutesShape(loadMinutes());
 let liveParticipants = ensureLiveParticipants(loadLiveParticipants());
 let sheetSaveTimer = null;
+let sheetRefreshTimer = null;
 let liveSaveTimer = null;
 let pendingPreviewTasks = [];
 let recentTaskIds = new Set();
@@ -403,9 +404,29 @@ function mergeMinutes(sheetMinutes, localMinutes) {
   const byId = new Map();
   [...ensureMinutesShape(sheetMinutes), ...ensureMinutesShape(localMinutes)].forEach((item) => {
     if (!item.id) return;
-    byId.set(item.id, byId.has(item.id) ? chooseNewerItem(byId.get(item.id), item) : item);
+    byId.set(item.id, byId.has(item.id) ? chooseMinuteItem(byId.get(item.id), item) : item);
   });
   return ensureMinutesShape(Array.from(byId.values()));
+}
+
+function chooseMinuteItem(currentItem, nextItem) {
+  const chosen = chooseNewerItem(currentItem, nextItem);
+  const other = chosen === currentItem ? nextItem : currentItem;
+  const sameMinutes = normalizeText(currentItem?.minutes) === normalizeText(nextItem?.minutes);
+  if (!sameMinutes) return chosen;
+
+  const chosenSummary = normalizeText(chosen.summary);
+  const otherSummary = normalizeText(other?.summary);
+  const chosenIsFallback = isFallbackSummary(chosenSummary);
+  const otherIsFallback = isFallbackSummary(otherSummary);
+  if (otherSummary && (!chosenSummary || (chosenIsFallback && !otherIsFallback))) {
+    return { ...chosen, summary: otherSummary };
+  }
+  return chosen;
+}
+
+function isFallbackSummary(summary) {
+  return /^(整理摘要|AI Summary)\s*-/i.test(String(summary || "").trim());
 }
 
 function mergeLiveParticipants(sheetParticipants, localParticipants) {
@@ -482,8 +503,9 @@ function parseBoolean(value) {
   return ["true", "yes", "y", "1", "done", "已完成"].includes(text);
 }
 
-function loadSheetState() {
+function loadSheetState(options = {}) {
   if (!SHEET_API_URL) return;
+  const { silent = false } = options;
 
   const callbackName = `coforyouMeetingSheet${Date.now()}${Math.random().toString(16).slice(2)}`;
   const separator = SHEET_API_URL.includes("?") ? "&" : "?";
@@ -521,7 +543,7 @@ function loadSheetState() {
 
   script.onerror = () => {
     cleanup();
-    showToast("Sheet 暂时同步不到，先用本地资料");
+    if (!silent) showToast("Sheet 暂时同步不到，先用本地资料");
   };
   timeoutId = window.setTimeout(script.onerror, 8000);
   script.src = `${SHEET_API_URL}${separator}callback=${callbackName}&t=${Date.now()}`;
@@ -534,6 +556,12 @@ function queueSheetSave() {
   sheetSaveTimer = window.setTimeout(saveSheetState, 650);
 }
 
+function queueSheetRefresh(delay = 1800) {
+  if (!SHEET_API_URL) return;
+  window.clearTimeout(sheetRefreshTimer);
+  sheetRefreshTimer = window.setTimeout(() => loadSheetState({ silent: true }), delay);
+}
+
 async function saveSheetState() {
   if (!SHEET_API_URL) return;
 
@@ -544,6 +572,7 @@ async function saveSheetState() {
       mode: "no-cors",
       body: new URLSearchParams({ payload }),
     });
+    queueSheetRefresh();
   } catch (error) {
     showToast("Sheet 保存失败，已先存在本机");
   }
