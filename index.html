@@ -3,55 +3,102 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Coforyou Meeting Board</title>
-    <link rel="stylesheet" href="./styles.css?v=20260526-1" />
+    <title>Coforyou Live Meeting Minutes</title>
+    <link rel="stylesheet" href="./styles.css?v=20260714-19" />
   </head>
   <body>
     <header class="topbar">
-      <div>
-        <p class="eyebrow">COFORYOU MEETING BOARD</p>
-        <h1>Meeting 重点整理</h1>
-      </div>
+      <button class="brand-home" id="homeButton" type="button" aria-label="回到会议记录页">
+        <p class="eyebrow">COFORYOU MINUTES</p>
+        <h1>会议记录</h1>
+      </button>
       <div class="topbar-controls">
-        <label class="palette-field">
-          <span>色系</span>
-          <select id="paletteSelect" aria-label="选择网站色系">
-            <option value="cream">Red Cream</option>
-            <option value="mono">Black White</option>
-            <option value="sunny">Yellow Blue</option>
-            <option value="colorful">Colorful</option>
-            <option value="green">Green</option>
-            <option value="blue">Blue</option>
-          </select>
-        </label>
-        <div class="topbar-note">Paste summary, auto checklist.</div>
+        <button class="ghost-button topbar-button" id="openMonitorButton" type="button">监督区</button>
       </div>
     </header>
 
     <main>
-      <section class="department-tabs" id="departmentTabs" aria-label="部门">
-        <button class="department-tab active" type="button" data-department="BD">
-          <span>BD</span>
-          <small class="mood-clear">clear</small>
-        </button>
-        <button class="department-tab" type="button" data-department="Operation">
-          <span>Operation</span>
-          <small class="mood-clear">clear</small>
-        </button>
-        <button class="department-tab" type="button" data-department="Content">
-          <span>Content</span>
-          <small class="mood-clear">clear</small>
-        </button>
-        <button class="department-tab" type="button" data-department="CS">
-          <span>CS</span>
-          <small class="mood-clear">clear</small>
-        </button>
-        <button class="coco-pending-button" id="cocoPendingButton" type="button" data-coco-pending>
-          Coco Pending <span id="cocoPendingBadge">0</span>
-        </button>
+      <section class="department-tabs" id="departmentTabs" aria-label="部门" hidden>
       </section>
 
-      <section class="input-panel" id="inputPanel">
+      <section class="live-panel" id="livePanel">
+        <div class="live-compose">
+          <div class="panel-title recording-panel-title">
+            <div>
+              <p class="eyebrow">记录区</p>
+              <h2>开会记录</h2>
+            </div>
+          </div>
+
+          <div class="meeting-meta live-meta">
+            <label class="field compact-field">
+              <span>你的名字</span>
+              <input id="participantName" type="text" placeholder="例如：Billy / Vivian" autocomplete="name" />
+            </label>
+            <label class="field compact-field">
+              <span>会议主题</span>
+              <input id="liveMeetingTitle" type="text" placeholder="例如：Weekly Meeting" />
+            </label>
+            <label class="field compact-field">
+              <span>日期</span>
+              <input id="liveMeetingDate" type="date" />
+            </label>
+          </div>
+
+          <textarea
+            id="liveMinutesDraft"
+            placeholder="开会时直接写在这里。先不用整理，重点是当下有人在记录。"
+          ></textarea>
+
+          <div class="button-row live-actions">
+            <button class="ghost-button records-inline-button" id="openRecordsButton" type="button">
+              已保存记录 <span id="topRecordsCount">0</span>
+            </button>
+            <div class="live-action-buttons">
+              <div class="recording-state-cluster">
+                <span class="live-status-pill" id="liveSelfStatus">还没进入</span>
+                <div class="live-edge-indicator live-offline" id="liveIndicator">
+                  <span class="indicator-dot"></span>
+                  <span id="liveIndicatorText">未加入</span>
+                  <button class="end-inline-button" id="endLiveMeetingButton" type="button" hidden>结束</button>
+                </div>
+              </div>
+              <button class="ghost-button" id="joinLiveMeetingButton" type="button">加入</button>
+              <button class="primary-button" id="saveLiveMinutesButton" type="button">保存 + 整理</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="utility-page" id="monitorPage" hidden>
+        <div class="utility-page-heading">
+          <div>
+            <p class="eyebrow">监督区</p>
+            <h2>会议现场</h2>
+          </div>
+          <button class="ghost-button" id="closeMonitorButton" type="button">返回记录页</button>
+        </div>
+        <div class="utility-toolbar">
+          <span>正在记录：<strong id="liveParticipantCount">0</strong></span>
+        </div>
+        <div class="live-monitor-list" id="liveMonitorList"></div>
+      </section>
+
+      <section class="utility-page" id="recordsPage" hidden>
+        <div class="utility-page-heading">
+          <div>
+            <p class="eyebrow">记录库</p>
+            <h2>已保存记录</h2>
+          </div>
+          <button class="ghost-button" id="closeRecordsButton" type="button">返回记录页</button>
+        </div>
+        <div class="utility-toolbar">
+          <span>已保存：<strong id="minutesCount">0</strong></span>
+        </div>
+        <div class="minutes-list" id="minutesList"></div>
+      </section>
+
+      <section class="input-panel" id="inputPanel" hidden>
         <div class="panel-title">
           <div>
             <p class="eyebrow">MEETING SUMMARY</p>
@@ -62,7 +109,7 @@
         <div class="meeting-meta">
           <label class="field compact-field">
             <span>Meeting Title</span>
-            <input id="meetingTitle" type="text" placeholder="例如：5月 BD Weekly Meeting" />
+            <input id="meetingTitle" type="text" placeholder="例如：Weekly Meeting" />
           </label>
           <label class="field compact-field">
             <span>Meeting Date</span>
@@ -103,47 +150,13 @@
         </section>
       </section>
 
-      <section class="minutes-panel" id="minutesPanel">
-        <div class="minutes-compose">
-          <div class="panel-title">
-            <div>
-              <p class="eyebrow">MEETING MINUTES</p>
-              <h2>会议记录</h2>
-            </div>
-            <span class="lock-note">保存后不能修改</span>
-          </div>
-          <div class="meeting-meta minutes-meta">
-            <label class="field compact-field">
-              <span>Minutes Title</span>
-              <input id="minutesTitle" type="text" placeholder="例如：5月26日 BD 周会" />
-            </label>
-            <label class="field compact-field">
-              <span>Meeting Date</span>
-              <input id="minutesDate" type="date" />
-            </label>
-          </div>
-          <textarea
-            id="minutesInput"
-            placeholder="开会时可以直接记录 meeting minutes。保存后会锁定，只能查看，不能再编辑。"
-          ></textarea>
-          <div class="button-row">
-            <button class="primary-button" id="saveMinutesButton" type="button">保存会议记录</button>
-            <button class="ghost-button" id="clearMinutesButton" type="button">清空记录</button>
-          </div>
-        </div>
-
-        <div class="minutes-archive">
-          <div class="panel-title">
-            <div>
-              <p class="eyebrow">ARCHIVE</p>
-              <h2>记录库</h2>
-            </div>
-            <button class="ghost-button" id="toggleMinutesArchiveButton" type="button">
-              查看会议记录 <span id="minutesCount">0</span>
-            </button>
-          </div>
-          <div class="minutes-list" id="minutesList" hidden></div>
-        </div>
+      <section class="minutes-panel records-panel" id="minutesPanel" hidden>
+        <input id="minutesTitle" type="hidden" />
+        <input id="minutesDate" type="hidden" />
+        <textarea id="minutesInput" hidden></textarea>
+        <button id="saveMinutesButton" type="button" hidden></button>
+        <button id="clearMinutesButton" type="button" hidden></button>
+        <button id="toggleMinutesArchiveButton" type="button" hidden></button>
       </section>
 
       <section class="board-header" id="boardHeader">
@@ -273,6 +286,7 @@
           <button class="modal-close" id="closeMinutesModalButton" type="button" aria-label="关闭">×</button>
         </div>
         <div class="minutes-read-meta" id="minutesModalMeta"></div>
+        <section class="minutes-summary-box" id="minutesModalSummary" hidden></section>
         <pre class="minutes-read-body" id="minutesModalBody"></pre>
         <div class="modal-actions">
           <button class="primary-button" id="closeMinutesModalFooterButton" type="button">关闭</button>
@@ -282,7 +296,7 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <script src="./app.js?v=20260526-2"></script>
+    <script src="./app.js?v=20260714-15"></script>
     <script src="./sync-guard.js?v=20260526-1"></script>
   </body>
 </html>

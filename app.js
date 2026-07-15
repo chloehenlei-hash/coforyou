@@ -1,4 +1,4 @@
-const departments = ["BD", "Operation", "Content", "CS"];
+const departments = ["Team"];
 const priorityLabels = {
   high: "High Priority",
   normal: "Normal",
@@ -72,16 +72,25 @@ const categories = [
 ];
 
 const storageKey = "coforyou-meeting-board-v1";
+const minutesStorageKey = "coforyou-meeting-minutes-v1";
+const liveStorageKey = "coforyou-live-meeting-v1";
+const participantStorageKey = "coforyou-meeting-participant-v1";
+const paletteStorageKey = "coforyou-meeting-board-palette-v2";
 // Paste the Google Apps Script Web App URL here after deployment.
 const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyUz6zHDX9XzY1PpC0tHdZJg8dAh4Bk3IK0559zQGGzWVlXs3fcaK5RX-tE0lYoOdeLFg/exec";
 let activeDepartment = departments[0];
 let activeTaskRef = null;
 let currentView = "board";
+let pageMode = "home";
 let state = ensureStateShape(loadState());
+let meetingMinutes = ensureMinutesShape(loadMinutes());
+let liveParticipants = ensureLiveParticipants(loadLiveParticipants());
 let sheetSaveTimer = null;
+let liveSaveTimer = null;
 let pendingPreviewTasks = [];
 let recentTaskIds = new Set();
 let lastCocoPendingCount = null;
+let currentParticipantId = localStorage.getItem(participantStorageKey) || "";
 
 const continuationPrefixes = [
   "后续优化",
@@ -107,6 +116,36 @@ const defaultPriority = document.querySelector("#defaultPriority");
 const summaryInput = document.querySelector("#summaryInput");
 const organizeButton = document.querySelector("#organizeButton");
 const clearInputButton = document.querySelector("#clearInputButton");
+const livePanel = document.querySelector("#livePanel");
+const participantName = document.querySelector("#participantName");
+const liveMeetingTitle = document.querySelector("#liveMeetingTitle");
+const liveMeetingDate = document.querySelector("#liveMeetingDate");
+const liveMinutesDraft = document.querySelector("#liveMinutesDraft");
+const joinLiveMeetingButton = document.querySelector("#joinLiveMeetingButton");
+const endLiveMeetingButton = document.querySelector("#endLiveMeetingButton");
+const saveLiveMinutesButton = document.querySelector("#saveLiveMinutesButton");
+const liveSelfStatus = document.querySelector("#liveSelfStatus");
+const liveIndicator = document.querySelector("#liveIndicator");
+const liveIndicatorText = document.querySelector("#liveIndicatorText");
+const liveParticipantCount = document.querySelector("#liveParticipantCount");
+const liveMonitorList = document.querySelector("#liveMonitorList");
+const openMonitorButton = document.querySelector("#openMonitorButton");
+const openRecordsButton = document.querySelector("#openRecordsButton");
+const closeMonitorButton = document.querySelector("#closeMonitorButton");
+const closeRecordsButton = document.querySelector("#closeRecordsButton");
+const monitorPage = document.querySelector("#monitorPage");
+const recordsPage = document.querySelector("#recordsPage");
+const minutesPanel = document.querySelector("#minutesPanel");
+const minutesTitle = document.querySelector("#minutesTitle");
+const minutesDate = document.querySelector("#minutesDate");
+const minutesInput = document.querySelector("#minutesInput");
+const saveMinutesButton = document.querySelector("#saveMinutesButton");
+const clearMinutesButton = document.querySelector("#clearMinutesButton");
+const toggleMinutesArchiveButton = document.querySelector("#toggleMinutesArchiveButton");
+const minutesCount = document.querySelector("#minutesCount");
+const topRecordsCount = document.querySelector("#topRecordsCount");
+const homeButton = document.querySelector("#homeButton");
+const minutesList = document.querySelector("#minutesList");
 const previewPanel = document.querySelector("#previewPanel");
 const previewList = document.querySelector("#previewList");
 const confirmPreviewButton = document.querySelector("#confirmPreviewButton");
@@ -130,10 +169,32 @@ const closeModalButton = document.querySelector("#closeModalButton");
 const cancelModalButton = document.querySelector("#cancelModalButton");
 const saveTaskButton = document.querySelector("#saveTaskButton");
 const deleteTaskButton = document.querySelector("#deleteTaskButton");
+const minutesModal = document.querySelector("#minutesModal");
+const minutesModalDepartment = document.querySelector("#minutesModalDepartment");
+const minutesModalTitle = document.querySelector("#minutesModalTitle");
+const minutesModalMeta = document.querySelector("#minutesModalMeta");
+const minutesModalSummary = document.querySelector("#minutesModalSummary");
+const minutesModalBody = document.querySelector("#minutesModalBody");
+const closeMinutesModalButton = document.querySelector("#closeMinutesModalButton");
+const closeMinutesModalFooterButton = document.querySelector("#closeMinutesModalFooterButton");
 const toast = document.querySelector("#toast");
+const paletteSelect = document.querySelector("#paletteSelect");
 
 function getToday() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
+}
+
+function loadPalette() {
+  const savedPalette = localStorage.getItem(paletteStorageKey);
+  const allowedPalettes = ["cream", "mono", "sunny", "colorful", "green", "blue"];
+  return allowedPalettes.includes(savedPalette) ? savedPalette : "cream";
+}
+
+function applyPalette(palette) {
+  const nextPalette = ["cream", "mono", "sunny", "colorful", "green", "blue"].includes(palette) ? palette : "cream";
+  document.body.dataset.palette = nextPalette;
+  localStorage.setItem(paletteStorageKey, nextPalette);
+  if (paletteSelect) paletteSelect.value = nextPalette;
 }
 
 function createEmptyDepartment() {
@@ -158,11 +219,16 @@ function loadState() {
 }
 
 function ensureStateShape(savedState) {
-  const nextState = savedState || {};
+  const nextState = savedState && typeof savedState === "object" && !Array.isArray(savedState) ? savedState : {};
   departments.forEach((department) => {
-    if (!nextState[department]) nextState[department] = createEmptyDepartment();
+    if (!nextState[department] || typeof nextState[department] !== "object" || Array.isArray(nextState[department])) {
+      nextState[department] = createEmptyDepartment();
+    }
     categories.forEach((category) => {
       if (!Array.isArray(nextState[department][category.id])) nextState[department][category.id] = [];
+      nextState[department][category.id] = nextState[department][category.id].filter(
+        (task) => task && typeof task === "object"
+      );
     });
   });
   return nextState;
@@ -175,6 +241,90 @@ function saveState() {
 
 function saveLocalState() {
   localStorage.setItem(storageKey, JSON.stringify(state));
+  localStorage.setItem(minutesStorageKey, JSON.stringify(meetingMinutes));
+  localStorage.setItem(liveStorageKey, JSON.stringify(liveParticipants));
+}
+
+function loadMinutes() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(minutesStorageKey));
+    if (saved) return saved;
+  } catch (error) {
+    // Ignore broken local minutes and rebuild below.
+  }
+  return [];
+}
+
+function ensureMinutesShape(savedMinutes) {
+  if (!Array.isArray(savedMinutes)) return [];
+  return savedMinutes
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      id: item.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      department: departments.includes(item.department) ? item.department : departments[0],
+      title: item.title || item.meetingTitle || "Untitled Meeting Minutes",
+      meetingDate: item.meetingDate || item.date || "",
+      participantName: item.participantName || item.owner || "",
+      minutes: item.minutes || item.content || "",
+      summary: item.summary || "",
+      createdAt: item.createdAt || new Date().toISOString(),
+      locked: true,
+    }))
+    .filter((item) => item.title && item.minutes);
+}
+
+function loadLiveParticipants() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(liveStorageKey));
+    if (saved) return saved;
+  } catch (error) {
+    // Ignore broken live meeting data and rebuild below.
+  }
+  return [];
+}
+
+function ensureLiveParticipants(savedParticipants) {
+  if (!Array.isArray(savedParticipants)) return [];
+  return savedParticipants
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      id: item.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      meetingId: item.meetingId || createMeetingId(item.department, item.meetingDate, item.meetingTitle),
+      department: departments.includes(item.department) ? item.department : departments[0],
+      participantName: item.participantName || item.name || "",
+      meetingTitle: item.meetingTitle || "Untitled Meeting",
+      meetingDate: item.meetingDate || getToday(),
+      draft: item.draft || "",
+      summary: item.summary || "",
+      wordCount: Number(item.wordCount || countWords(item.draft || "")),
+      joinedAt: item.joinedAt || new Date().toISOString(),
+      lastTypingAt: item.lastTypingAt || "",
+      savedAt: item.savedAt || "",
+      endedAt: item.endedAt || "",
+      status: item.status || (item.savedAt ? "saved" : "joined"),
+      updatedAt: item.updatedAt || new Date().toISOString(),
+    }))
+    .filter((item) => item.participantName);
+}
+
+function flattenLiveParticipants() {
+  return ensureLiveParticipants(liveParticipants).map((item) => ({
+    id: item.id,
+    meetingId: item.meetingId,
+    department: item.department,
+    participantName: item.participantName,
+    meetingTitle: item.meetingTitle,
+    meetingDate: item.meetingDate,
+    draft: item.draft,
+    summary: item.summary,
+    wordCount: item.wordCount || countWords(item.draft),
+    joinedAt: item.joinedAt,
+    lastTypingAt: item.lastTypingAt,
+    savedAt: item.savedAt,
+    endedAt: item.endedAt || "",
+    status: item.status,
+    updatedAt: item.updatedAt || new Date().toISOString(),
+  }));
 }
 
 function flattenState() {
@@ -198,6 +348,88 @@ function flattenState() {
       }))
     )
   );
+}
+
+function flattenMinutes() {
+  return ensureMinutesShape(meetingMinutes).map((item) => ({
+    id: item.id,
+    department: item.department,
+    title: item.title,
+    meetingDate: item.meetingDate,
+    participantName: item.participantName || "",
+    minutes: item.minutes,
+    summary: item.summary || "",
+    createdAt: item.createdAt,
+    locked: true,
+  }));
+}
+
+function countStateTasks(boardState) {
+  return departments.reduce(
+    (departmentTotal, department) =>
+      departmentTotal +
+      categories.reduce(
+        (categoryTotal, category) => categoryTotal + (boardState[department]?.[category.id] || []).length,
+        0
+      ),
+    0
+  );
+}
+
+function chooseNewerItem(currentItem, nextItem) {
+  const currentTime = new Date(currentItem?.updatedAt || currentItem?.createdAt || 0).getTime() || 0;
+  const nextTime = new Date(nextItem?.updatedAt || nextItem?.createdAt || 0).getTime() || 0;
+  return nextTime >= currentTime ? nextItem : currentItem;
+}
+
+function mergeStates(sheetState, localState) {
+  const merged = ensureStateShape({});
+  departments.forEach((department) => {
+    categories.forEach((category) => {
+      const byId = new Map();
+      [...(sheetState[department]?.[category.id] || []), ...(localState[department]?.[category.id] || [])].forEach(
+        (task) => {
+          if (!task || !task.id) return;
+          byId.set(task.id, byId.has(task.id) ? chooseNewerItem(byId.get(task.id), task) : task);
+        }
+      );
+      merged[department][category.id] = Array.from(byId.values());
+    });
+  });
+  return ensureStateShape(merged);
+}
+
+function mergeMinutes(sheetMinutes, localMinutes) {
+  const byId = new Map();
+  [...ensureMinutesShape(sheetMinutes), ...ensureMinutesShape(localMinutes)].forEach((item) => {
+    if (!item.id) return;
+    byId.set(item.id, byId.has(item.id) ? chooseNewerItem(byId.get(item.id), item) : item);
+  });
+  return ensureMinutesShape(Array.from(byId.values()));
+}
+
+function mergeLiveParticipants(sheetParticipants, localParticipants) {
+  const byId = new Map();
+  [...ensureLiveParticipants(sheetParticipants), ...ensureLiveParticipants(localParticipants)].forEach((item) => {
+    if (!item.id) return;
+    byId.set(item.id, byId.has(item.id) ? chooseNewerItem(byId.get(item.id), item) : item);
+  });
+  return ensureLiveParticipants(Array.from(byId.values()));
+}
+
+function createMeetingId(department = activeDepartment, date = liveMeetingDate?.value || getToday(), title = liveMeetingTitle?.value || "") {
+  const safeDepartment = normalizeDepartment(department) || activeDepartment || departments[0];
+  const safeDate = date || getToday();
+  const safeTitle = String(title || `${safeDepartment} Meeting`).trim().toLowerCase().replace(/\s+/g, "-");
+  return `${safeDate}-${safeDepartment}-${safeTitle}`.replace(/[^a-z0-9\u4e00-\u9fa5-]/gi, "-");
+}
+
+function countWords(text) {
+  const value = String(text || "").trim();
+  if (!value) return 0;
+  const chineseChars = (value.match(/[\u4e00-\u9fa5]/g) || []).length;
+  const latinWords = (value.replace(/[\u4e00-\u9fa5]/g, " ").match(/[A-Za-z0-9]+(?:[-'][A-Za-z0-9]+)?/g) || []).length;
+  return chineseChars + latinWords;
 }
 
 function stateFromRows(rows) {
@@ -266,10 +498,24 @@ function loadSheetState() {
 
   window[callbackName] = (data) => {
     const rows = Array.isArray(data) ? data : data.tasks || [];
-    state = stateFromRows(rows);
+    const sheetState = stateFromRows(rows);
+    const mergedState = mergeStates(sheetState, state);
+    const sheetMinutes = data && Array.isArray(data.minutes) ? data.minutes : [];
+    const mergedMinutes = mergeMinutes(sheetMinutes, meetingMinutes);
+    const sheetLiveParticipants = data && Array.isArray(data.liveParticipants) ? data.liveParticipants : [];
+    const mergedLiveParticipants = mergeLiveParticipants(sheetLiveParticipants, liveParticipants);
+    const shouldPushLocalBack =
+      countStateTasks(mergedState) > countStateTasks(sheetState) ||
+      mergedMinutes.length > ensureMinutesShape(sheetMinutes).length ||
+      mergedLiveParticipants.length > ensureLiveParticipants(sheetLiveParticipants).length;
+    state = mergedState;
+    meetingMinutes = mergedMinutes;
+    liveParticipants = mergedLiveParticipants;
     saveLocalState();
     renderBoard();
-    showToast("已同步 Google Sheet");
+    if (shouldPushLocalBack) {
+      queueSheetSave();
+    }
     cleanup();
   };
 
@@ -291,7 +537,7 @@ function queueSheetSave() {
 async function saveSheetState() {
   if (!SHEET_API_URL) return;
 
-  const payload = JSON.stringify({ tasks: flattenState() });
+  const payload = JSON.stringify({ tasks: flattenState(), minutes: flattenMinutes(), liveParticipants: flattenLiveParticipants() });
   try {
     await fetch(SHEET_API_URL, {
       method: "POST",
@@ -303,8 +549,394 @@ async function saveSheetState() {
   }
 }
 
+function getCurrentMeetingTitle() {
+  return liveMeetingTitle.value.trim() || meetingTitle.value.trim() || `${activeDepartment} Meeting`;
+}
+
+function getCurrentLiveParticipant() {
+  const meetingId = createMeetingId(activeDepartment, liveMeetingDate.value || getToday(), getCurrentMeetingTitle());
+  if (currentParticipantId) {
+    const existing = liveParticipants.find((item) => item.id === currentParticipantId);
+    if (existing && existing.department === activeDepartment && existing.meetingId === meetingId) return existing;
+  }
+  return null;
+}
+
+function upsertLiveParticipant(partial = {}) {
+  const name = participantName.value.trim();
+  if (!name) {
+    showToast("先填你的名字，Coco 才知道是谁在记录");
+    participantName.focus();
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const meetingDateValue = liveMeetingDate.value || getToday();
+  const meetingTitleValue = getCurrentMeetingTitle();
+  const meetingId = createMeetingId(activeDepartment, meetingDateValue, meetingTitleValue);
+  let participant = getCurrentLiveParticipant();
+
+  if (!participant || participant.meetingId !== meetingId) {
+    participant = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      meetingId,
+      department: activeDepartment,
+      participantName: name,
+      meetingTitle: meetingTitleValue,
+      meetingDate: meetingDateValue,
+      draft: "",
+      summary: "",
+      wordCount: 0,
+      joinedAt: now,
+      lastTypingAt: "",
+      savedAt: "",
+      status: "joined",
+      updatedAt: now,
+    };
+    liveParticipants.unshift(participant);
+  }
+
+  participant.department = activeDepartment;
+  participant.participantName = name;
+  participant.meetingTitle = meetingTitleValue;
+  participant.meetingDate = meetingDateValue;
+  participant.meetingId = meetingId;
+  Object.assign(participant, partial);
+  participant.wordCount = countWords(participant.draft);
+  participant.updatedAt = now;
+
+  currentParticipantId = participant.id;
+  localStorage.setItem(participantStorageKey, currentParticipantId);
+  saveLocalState();
+  queueLiveSave();
+  renderLiveRoom();
+  return participant;
+}
+
+function joinLiveMeeting() {
+  const participant = upsertLiveParticipant({
+    draft: liveMinutesDraft.value,
+    status: liveMinutesDraft.value.trim() ? "recording" : "joined",
+    endedAt: "",
+  });
+  if (!participant) return;
+  liveMinutesDraft.value = participant.draft || liveMinutesDraft.value;
+}
+
+function endLiveMeeting() {
+  const participant = getCurrentLiveParticipant();
+  if (!participant) {
+    showToast("还没有加入这个 meeting");
+    return;
+  }
+  participant.status = "ended";
+  participant.endedAt = new Date().toISOString();
+  participant.updatedAt = participant.endedAt;
+  saveLocalState();
+  queueLiveSave();
+  renderLiveRoom();
+}
+
+function updateLiveDraft() {
+  if (!participantName.value.trim()) {
+    liveSelfStatus.hidden = false;
+    liveSelfStatus.textContent = "先填名字";
+    liveSelfStatus.className = "live-status-pill live-empty";
+    return;
+  }
+  const existing = getCurrentLiveParticipant();
+  if (!existing) {
+    liveSelfStatus.hidden = false;
+    liveSelfStatus.textContent = "还没进入";
+    liveSelfStatus.className = "live-status-pill live-empty";
+    renderLiveIndicator(null, { label: "还没进入", className: "live-empty" });
+    return;
+  }
+  if (existing?.status === "ended") {
+    renderLiveRoom();
+    return;
+  }
+  const participant = upsertLiveParticipant({
+    draft: liveMinutesDraft.value,
+    lastTypingAt: new Date().toISOString(),
+    status: "typing",
+  });
+  if (!participant) return;
+  window.clearTimeout(updateLiveDraft.idleTimer);
+  updateLiveDraft.idleTimer = window.setTimeout(() => {
+    const current = getCurrentLiveParticipant();
+    if (!current || current.status === "saved" || current.status === "ended") return;
+    current.status = current.draft ? "recording" : "joined";
+    current.updatedAt = new Date().toISOString();
+    saveLocalState();
+    queueLiveSave();
+    renderLiveRoom();
+  }, 2400);
+}
+
+function queueLiveSave() {
+  window.clearTimeout(liveSaveTimer);
+  liveSaveTimer = window.setTimeout(saveSheetState, 900);
+}
+
+function getActiveMeetingParticipants() {
+  const meetingId = createMeetingId(activeDepartment, liveMeetingDate.value || getToday(), getCurrentMeetingTitle());
+  return ensureLiveParticipants(liveParticipants)
+    .filter((item) => item.meetingId === meetingId && item.department === activeDepartment && item.status !== "ended")
+    .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+}
+
+function getLiveStatusInfo(participant) {
+  if (participant.status === "ended") return { label: "已结束", className: "live-ended" };
+  if (participant.savedAt) return { label: "已保存", className: "live-saved" };
+  if (participant.status === "typing") return { label: "正在记录", className: "live-typing" };
+  if (!participant.draft) return { label: "未开始写", className: "live-empty" };
+  const lastTime = new Date(participant.lastTypingAt || participant.updatedAt || 0).getTime();
+  const idleMinutes = lastTime ? Math.floor((Date.now() - lastTime) / 60000) : 0;
+  if (idleMinutes >= 3) return { label: `${idleMinutes} 分钟没动`, className: "live-idle" };
+  return { label: "正在记录", className: "live-recording" };
+}
+
+function renderLiveRoom() {
+  if (!livePanel) return;
+  const current = getCurrentLiveParticipant();
+  if (current) {
+    participantName.value = current.participantName || participantName.value;
+    liveMeetingTitle.value = current.meetingTitle || liveMeetingTitle.value;
+    liveMeetingDate.value = current.meetingDate || liveMeetingDate.value || getToday();
+    if (document.activeElement !== liveMinutesDraft) liveMinutesDraft.value = current.draft || "";
+  }
+
+  const selfInfo = current ? getLiveStatusInfo(current) : { label: "还没进入", className: "live-empty" };
+  liveSelfStatus.hidden = Boolean(current);
+  liveSelfStatus.textContent = selfInfo.label;
+  liveSelfStatus.className = `live-status-pill ${selfInfo.className}`;
+  renderLiveIndicator(current, selfInfo);
+
+  const participants = getActiveMeetingParticipants();
+  liveParticipantCount.textContent = participants.length;
+  liveMonitorList.innerHTML = participants.length
+    ? participants
+        .map((item) => {
+          const info = getLiveStatusInfo(item);
+          const initial = getParticipantInitial(item.participantName);
+          const notePreview = getNotePreview(item.draft) || item.draft.slice(0, 140);
+          return `
+            <article class="live-person ${info.className}">
+              <div class="live-person-top">
+                <div class="live-person-identity">
+                  <span class="live-avatar">${escapeHtml(initial)}</span>
+                  <div>
+                    <strong>${escapeHtml(item.participantName)}</strong>
+                    <small>${escapeHtml(item.meetingTitle || "Meeting")}</small>
+                  </div>
+                </div>
+                <span class="live-status-pill ${info.className}">${escapeHtml(info.label)}</span>
+              </div>
+              <div class="live-person-meta">
+                <span>加入 ${escapeHtml(formatLiveClock(item.joinedAt))}</span>
+                <span>最后记录 ${escapeHtml(formatLiveClock(item.lastTypingAt || item.updatedAt))}</span>
+                ${item.savedAt ? `<span>已保存 ${escapeHtml(formatLiveClock(item.savedAt))}</span>` : ""}
+                ${item.endedAt ? `<span>结束 ${escapeHtml(formatLiveClock(item.endedAt))}</span>` : ""}
+              </div>
+              <div class="live-person-activity">
+                <span>正在做什么</span>
+                ${item.draft ? `<p>${escapeHtml(notePreview)}</p>` : '<p class="muted-copy">已加入，还没有开始写。</p>'}
+              </div>
+            </article>
+          `;
+        })
+        .join("")
+    : '<div class="empty-state">还没有人进入这个 meeting。</div>';
+}
+
+function renderLiveIndicator(current, info) {
+  if (!liveIndicator || !liveIndicatorText) return;
+  const isActive = current && ["joined", "typing", "recording"].includes(current.status);
+  const isSaved = current && current.status !== "ended" && current.savedAt;
+  const isEnded = current && current.status === "ended";
+  liveIndicator.hidden = !current;
+  liveIndicator.className = [
+    "live-edge-indicator",
+    isActive ? "live-active" : "",
+    isSaved ? "live-saved" : "",
+    isEnded ? "live-ended" : "",
+    !current ? "live-offline" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  liveIndicatorText.textContent = isActive
+    ? "实时记录中"
+    : isSaved
+      ? "已保存，未结束"
+      : isEnded
+        ? "已结束"
+        : "未加入";
+  if (endLiveMeetingButton) {
+    endLiveMeetingButton.hidden = !(isActive || isSaved || isEnded);
+    endLiveMeetingButton.textContent = isEnded ? "重新加入" : "结束";
+    endLiveMeetingButton.classList.toggle("rejoin-mode", Boolean(isEnded));
+  }
+  if (joinLiveMeetingButton) {
+    joinLiveMeetingButton.hidden = Boolean(current);
+    joinLiveMeetingButton.textContent = "加入";
+  }
+}
+
+function handleEndControlClick(event) {
+  const current = getCurrentLiveParticipant();
+  if (current?.status === "ended") {
+    joinLiveMeeting();
+    return;
+  }
+  endLiveMeeting();
+}
+
+function formatLiveTime(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "No update";
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  if (diffMinutes < 1) return "Just now";
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  return date.toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" });
+}
+
+function getParticipantInitial(name) {
+  const cleanName = String(name || "").trim();
+  if (!cleanName) return "?";
+  const firstPart = cleanName.split(/\s+/)[0] || cleanName;
+  return Array.from(firstPart)[0]?.toUpperCase() || "?";
+}
+
+function formatLiveClock(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "--:--";
+  const today = new Date();
+  const sameDay = date.toLocaleDateString("en-CA") === today.toLocaleDateString("en-CA");
+  const time = date.toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", hour12: false });
+  if (sameDay) return time;
+  const day = date.toLocaleDateString("en-MY", { day: "2-digit", month: "2-digit" });
+  return `${day} ${time}`;
+}
+
+function getLiveMinuteKey(values) {
+  return [
+    normalizeDepartment(values.department || activeDepartment),
+    String(values.meetingDate || "").trim(),
+    String(values.title || values.meetingTitle || "").trim().toLowerCase(),
+    String(values.participantName || "").trim().toLowerCase(),
+  ].join("|");
+}
+
+function findExistingMinuteIndex(participant) {
+  const targetKey = getLiveMinuteKey({
+    department: participant.department,
+    meetingDate: participant.meetingDate,
+    title: participant.meetingTitle,
+    participantName: participant.participantName,
+  });
+  return meetingMinutes.findIndex((item) => getLiveMinuteKey(item) === targetKey);
+}
+
+function dedupeMeetingMinutes(minutes) {
+  const byKey = new Map();
+  ensureMinutesShape(minutes).forEach((item) => {
+    const key = getLiveMinuteKey(item);
+    const existing = byKey.get(key);
+    if (!existing || String(item.createdAt || "").localeCompare(String(existing.createdAt || "")) > 0) {
+      byKey.set(key, item);
+    }
+  });
+  return Array.from(byKey.values()).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+}
+
+function saveLiveMinutes(options = {}) {
+  const { silent = false, auto = false } = options;
+  const saveTime = new Date().toISOString();
+  const participant = upsertLiveParticipant({
+    draft: liveMinutesDraft.value.trim(),
+    ...(auto ? {} : { lastTypingAt: saveTime }),
+  });
+  if (!participant || !participant.draft) {
+    if (!silent) showToast("先写一点 meeting minutes 再保存");
+    return;
+  }
+
+  const wasEnded = participant.status === "ended";
+  const summary = generateMeetingSummary(participant.draft, participant.meetingTitle);
+  const savedAt = saveTime;
+  participant.summary = summary;
+  participant.savedAt = savedAt;
+  participant.status = wasEnded ? "ended" : "saved";
+  participant.updatedAt = savedAt;
+
+  const minuteRecord = {
+    department: participant.department,
+    title: participant.meetingTitle,
+    meetingDate: participant.meetingDate,
+    participantName: participant.participantName,
+    minutes: participant.draft,
+    summary,
+    createdAt: savedAt,
+    locked: true,
+  };
+  const existingIndex = findExistingMinuteIndex(participant);
+  if (existingIndex >= 0) {
+    meetingMinutes[existingIndex] = {
+      ...meetingMinutes[existingIndex],
+      ...minuteRecord,
+      id: meetingMinutes[existingIndex].id,
+    };
+  } else {
+    meetingMinutes.unshift({
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      ...minuteRecord,
+    });
+  }
+  meetingMinutes = dedupeMeetingMinutes(meetingMinutes);
+
+  minutesTitle.value = "";
+  minutesInput.value = "";
+  minutesDate.value = getToday();
+  minutesList.hidden = false;
+  saveState();
+  renderBoard();
+}
+
 function normalizeText(value) {
   return String(value || "").trim();
+}
+
+function generateMeetingSummary(minutes, title = "Meeting") {
+  const lines = normalizeText(minutes)
+    .split(/\n|\r/g)
+    .map((line) => cleanDescriptionLine(line))
+    .filter(Boolean);
+  const taskGroups = { todo: [], pending: [], issues: [] };
+  lines.forEach((line) => {
+    const categoryId = classifyLine(line);
+    taskGroups[categoryId || "todo"].push(stripCategoryLabel(line));
+  });
+
+  const opening = lines.slice(0, 3).join(" / ");
+  const summaryLines = [
+    `整理摘要 - ${title}`,
+    "",
+    "会议重点：",
+    opening ? `- ${opening}` : "- 这份会议记录没有足够内容，需要补充重点。",
+    "",
+    "Action Items：",
+    ...(taskGroups.todo.length ? taskGroups.todo.slice(0, 8).map((item) => `- ${item}`) : ["- 暂时没有明确 action item。"]),
+    "",
+    "需要 Coco 确认：",
+    ...(taskGroups.pending.length ? taskGroups.pending.slice(0, 8).map((item) => `- ${item}`) : ["- 暂时没有需要 Coco 决定的事项。"]),
+    "",
+    "Issues / Blockers：",
+    ...(taskGroups.issues.length ? taskGroups.issues.slice(0, 8).map((item) => `- ${item}`) : ["- 暂时没有明显 blocker。"]),
+  ];
+
+  return summaryLines.join("\n");
 }
 
 function parseSummary(text) {
@@ -606,20 +1238,18 @@ function cancelPreview() {
 
 function renderDepartments() {
   const departmentButtons = departments
-    .map((department) => {
-      const mood = getDepartmentMood(department);
-      return `
+    .map(
+      (department) => `
         <button class="department-tab${currentView === "board" && department === activeDepartment ? " active" : ""}" type="button" data-department="${department}">
           <span>${department}</span>
-          <small class="${mood.className}">${mood.label}</small>
         </button>
-      `;
-    })
+      `
+    )
     .join("");
   departmentTabs.innerHTML = `
     ${departmentButtons}
     <button class="coco-pending-button${currentView === "coco" ? " active" : ""}" id="cocoPendingButton" type="button" data-coco-pending>
-      Coco Pending <span id="cocoPendingBadge">0</span>
+      Coco 要确认 <span id="cocoPendingBadge">0</span>
     </button>
   `;
   activeDepartmentTitle.textContent = activeDepartment;
@@ -629,8 +1259,23 @@ function renderDepartments() {
 }
 
 function renderBoard() {
+  try {
+    renderBoardContent();
+  } catch (error) {
+    console.error("Meeting board render failed. Resetting to a safe board.", error);
+    state = ensureStateShape({});
+    currentView = "board";
+    saveLocalState();
+    renderBoardContent();
+    showToast("页面已重整回正常 board");
+  }
+}
+
+function renderBoardContent() {
+  state = ensureStateShape(state);
   renderDepartments();
   setViewVisibility();
+  renderLiveRoom();
   if (currentView === "coco") {
     renderCocoPendingView();
     return;
@@ -677,6 +1322,21 @@ function renderBoard() {
     })
     .join("");
   renderCompletedTasks(departmentBoard);
+  renderMinutesArchive();
+}
+
+function navigatePage(nextMode, options = {}) {
+  pageMode = ["home", "monitor", "records"].includes(nextMode) ? nextMode : "home";
+  currentView = "board";
+  if (!options.skipHash) {
+    if (pageMode === "home") {
+      history.pushState(null, "", `${window.location.pathname}${window.location.search}`);
+    } else {
+      history.pushState(null, "", `#${pageMode}`);
+    }
+  }
+  renderBoard();
+  window.scrollTo({ top: 0, behavior: "auto" });
 }
 
 function getDepartmentCounts(department) {
@@ -713,10 +1373,15 @@ function renderActiveDepartmentStats() {
 
 function setViewVisibility() {
   const isCocoView = currentView === "coco";
-  inputPanel.hidden = isCocoView;
-  boardHeader.hidden = isCocoView;
-  listGrid.hidden = isCocoView;
-  completedSection.hidden = isCocoView;
+  livePanel.hidden = isCocoView || pageMode !== "home";
+  monitorPage.hidden = pageMode !== "monitor";
+  recordsPage.hidden = pageMode !== "records";
+  if (openRecordsButton) openRecordsButton.hidden = pageMode !== "home";
+  inputPanel.hidden = true;
+  minutesPanel.hidden = true;
+  boardHeader.hidden = true;
+  listGrid.hidden = true;
+  completedSection.hidden = true;
   cocoPendingView.hidden = !isCocoView;
 }
 
@@ -806,6 +1471,104 @@ function renderCompletedTasks(departmentBoard) {
         )
         .join("")
     : '<div class="empty-state">Done list is empty for now.</div>';
+}
+
+function getDepartmentMinutes(department = activeDepartment) {
+  return ensureMinutesShape(meetingMinutes)
+    .filter((item) => item.department === department)
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+}
+
+function renderMinutesArchive() {
+  const minutes = getDepartmentMinutes();
+  minutesCount.textContent = minutes.length;
+  if (topRecordsCount) topRecordsCount.textContent = minutes.length;
+  minutesList.classList.toggle("single-record", minutes.length === 1);
+  minutesList.innerHTML = minutes.length
+    ? minutes
+        .map(
+          (item) => `
+            <button class="minutes-item" type="button" data-minutes-id="${escapeAttribute(item.id)}">
+              <span class="minutes-item-top">
+                <strong>${escapeHtml(item.title)}</strong>
+                <em>${item.summary ? "已整理" : "原始记录"}</em>
+              </span>
+              <span class="minutes-item-meta">
+                <span>${escapeHtml(item.meetingDate || "日期待补充")}</span>
+                <span>${escapeHtml(item.participantName || "Recorder 待补充")}</span>
+                <span>${escapeHtml(formatCreatedAt(item.createdAt))}</span>
+              </span>
+              <span class="minutes-item-preview">${escapeHtml(getMinutePreview(item))}</span>
+              <span class="minutes-item-action">打开记录</span>
+            </button>
+          `
+        )
+        .join("")
+    : '<div class="empty-state">这个部门暂时没有会议记录。</div>';
+}
+
+function getMinutePreview(item) {
+  const source = item.summary || item.minutes || "";
+  const lines = normalizeText(source)
+    .split(/\n|\r/g)
+    .map((line) => line.replace(/^[-•]\s*/, "").trim())
+    .filter(Boolean)
+    .filter((line) => !/^(整理摘要|会议重点|Action Items|需要 Coco 确认|Issues \/ Blockers)[：:]?$/i.test(line));
+  return lines.slice(0, 2).join(" / ") || "打开查看完整会议记录。";
+}
+
+function saveMeetingMinutes() {
+  const title = minutesTitle.value.trim();
+  const minutes = minutesInput.value.trim();
+  if (!title || !minutes) {
+    showToast("请先填写会议名字和会议记录");
+    return;
+  }
+  const participant = participantName.value.trim();
+  const summary = generateMeetingSummary(minutes, title);
+
+  meetingMinutes.unshift({
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    department: activeDepartment,
+    title,
+    meetingDate: minutesDate.value || getToday(),
+    participantName: participant,
+    minutes,
+    summary,
+    createdAt: new Date().toISOString(),
+    locked: true,
+  });
+  meetingMinutes = ensureMinutesShape(meetingMinutes);
+  minutesTitle.value = "";
+  minutesInput.value = "";
+  minutesDate.value = getToday();
+  minutesList.hidden = false;
+  saveState();
+  renderMinutesArchive();
+  showToast("会议记录已保存并锁定");
+}
+
+function openMinutesModal(minutesId) {
+  const item = meetingMinutes.find((minutes) => minutes.id === minutesId);
+  if (!item) return;
+  minutesModalDepartment.textContent = `${item.department} · LOCKED`;
+  minutesModalTitle.textContent = item.title;
+  minutesModalMeta.innerHTML = `
+    <span>${escapeHtml(item.meetingDate || "日期待补充")}</span>
+    ${item.participantName ? `<span>Recorder: ${escapeHtml(item.participantName)}</span>` : ""}
+    <span>${escapeHtml(formatCreatedAt(item.createdAt))}</span>
+    <span>只读</span>
+  `;
+  minutesModalSummary.hidden = !item.summary;
+  minutesModalSummary.innerHTML = item.summary
+    ? `<p class="eyebrow">整理摘要</p><pre>${escapeHtml(item.summary)}</pre>`
+    : "";
+  minutesModalBody.textContent = item.minutes;
+  minutesModal.showModal();
+}
+
+function closeMinutesModal() {
+  minutesModal.close();
 }
 
 function getTask(department, categoryId, taskId) {
@@ -933,6 +1696,12 @@ function formatUpdatedAt(value) {
   return `Updated ${date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}`;
 }
 
+function formatCreatedAt(value) {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "Saved date 待补充";
+  return `Saved ${date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}`;
+}
+
 function getPriorityClass(priority) {
   if (priority === "high") return "priority-high";
   if (priority === "low") return "priority-low";
@@ -974,10 +1743,17 @@ departmentTabs.addEventListener("click", (event) => {
 
   const button = event.target.closest(".department-tab");
   if (!button) return;
+  const previousDepartment = activeDepartment;
   activeDepartment = button.dataset.department;
+  if (!liveMeetingTitle.value || liveMeetingTitle.value === `${previousDepartment} Meeting`) {
+    liveMeetingTitle.value = `${activeDepartment} Meeting`;
+    meetingTitle.value = liveMeetingTitle.value;
+  }
   currentView = "board";
   renderBoard();
 });
+
+paletteSelect?.addEventListener("change", () => applyPalette(paletteSelect.value));
 
 document.addEventListener("change", (event) => {
   const checkbox = event.target.closest('input[type="checkbox"]');
@@ -1017,6 +1793,54 @@ clearInputButton.addEventListener("click", () => {
   summaryInput.value = "";
   cancelPreview();
 });
+joinLiveMeetingButton.addEventListener("click", joinLiveMeeting);
+endLiveMeetingButton?.addEventListener("click", handleEndControlClick);
+saveLiveMinutesButton.addEventListener("click", saveLiveMinutes);
+homeButton?.addEventListener("click", () => navigatePage("home"));
+participantName.addEventListener("change", () => {
+  const current = getCurrentLiveParticipant();
+  if (current && current.status !== "ended") upsertLiveParticipant();
+});
+liveMeetingTitle.addEventListener("change", () => {
+  meetingTitle.value = liveMeetingTitle.value;
+  const current = getCurrentLiveParticipant();
+  if (current && current.status !== "ended") upsertLiveParticipant();
+  renderLiveRoom();
+});
+liveMeetingDate.addEventListener("change", () => {
+  meetingDate.value = liveMeetingDate.value;
+  const current = getCurrentLiveParticipant();
+  if (current && current.status !== "ended") upsertLiveParticipant();
+  renderLiveRoom();
+});
+liveMinutesDraft.addEventListener("input", updateLiveDraft);
+openMonitorButton?.addEventListener("click", () => {
+  navigatePage("monitor");
+});
+openRecordsButton?.addEventListener("click", () => {
+  navigatePage("records");
+});
+closeMonitorButton?.addEventListener("click", () => {
+  navigatePage("home");
+});
+closeRecordsButton?.addEventListener("click", () => {
+  navigatePage("home");
+});
+saveMinutesButton.addEventListener("click", saveMeetingMinutes);
+clearMinutesButton.addEventListener("click", () => {
+  minutesTitle.value = "";
+  minutesInput.value = "";
+  minutesDate.value = getToday();
+});
+toggleMinutesArchiveButton.addEventListener("click", () => {
+  minutesList.hidden = !minutesList.hidden;
+  renderMinutesArchive();
+});
+minutesList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-minutes-id]");
+  if (!button) return;
+  openMinutesModal(button.dataset.minutesId);
+});
 confirmPreviewButton.addEventListener("click", confirmPreviewTasks);
 cancelPreviewButton.addEventListener("click", cancelPreview);
 previewList.addEventListener("click", (event) => {
@@ -1036,6 +1860,39 @@ taskModal.addEventListener("click", (event) => {
   if (event.target === taskModal) closeTaskModal();
 });
 
+closeMinutesModalButton.addEventListener("click", closeMinutesModal);
+closeMinutesModalFooterButton.addEventListener("click", closeMinutesModal);
+minutesModal.addEventListener("click", (event) => {
+  if (event.target === minutesModal) closeMinutesModal();
+});
+window.addEventListener("popstate", () => {
+  const hashMode = window.location.hash.replace("#", "");
+  pageMode = ["monitor", "records"].includes(hashMode) ? hashMode : "home";
+  renderBoard();
+});
+
 meetingDate.value = getToday();
+minutesDate.value = getToday();
+liveMeetingDate.value = getToday();
+liveMeetingTitle.value = "Weekly Meeting";
+meetingTitle.value = liveMeetingTitle.value;
+pageMode = ["monitor", "records"].includes(window.location.hash.replace("#", ""))
+  ? window.location.hash.replace("#", "")
+  : "home";
+applyPalette(loadPalette());
 renderBoard();
 loadSheetState();
+window.setInterval(() => {
+  const current = getCurrentLiveParticipant();
+  if (current && current.status !== "saved") {
+    current.updatedAt = new Date().toISOString();
+    saveLocalState();
+    queueLiveSave();
+  }
+  renderLiveRoom();
+}, 10000);
+window.setInterval(() => {
+  const current = getCurrentLiveParticipant();
+  if (!current || current.status === "ended" || !String(liveMinutesDraft.value || current.draft || "").trim()) return;
+  saveLiveMinutes({ silent: true, auto: true });
+}, 60000);
