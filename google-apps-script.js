@@ -1,6 +1,7 @@
 const SHEET_NAME = "Meeting Board";
 const MINUTES_SHEET_NAME = "Meeting Minutes";
 const LIVE_SHEET_NAME = "Live Meeting";
+const LIVE_COMPAT_PREFIX = "__coforyou_live__";
 const COCO_EMAIL = "PASTE_COCO_EMAIL_HERE";
 const GEMINI_MODEL = "gemini-3.5-flash";
 const GEMINI_FALLBACK_MODEL = "gemini-2.5-flash";
@@ -53,12 +54,14 @@ function doGet(event) {
   const sheet = getSheet();
   const values = sheet.getDataRange().getValues();
   const rows = values.slice(1).filter((row) => row.some(Boolean));
-  const tasks = rows.map((row) =>
-    HEADERS.reduce((task, header, index) => {
-      task[header] = row[index] === undefined ? "" : row[index];
-      return task;
-    }, {})
-  );
+  const tasks = rows
+    .map((row) =>
+      HEADERS.reduce((task, header, index) => {
+        task[header] = row[index] === undefined ? "" : row[index];
+        return task;
+      }, {})
+    )
+    .filter((task) => !String(task.id || "").startsWith(LIVE_COMPAT_PREFIX));
   const minutesSheet = getMinutesSheet();
   const minutesValues = minutesSheet.getDataRange().getValues();
   const minutesRows = minutesValues.slice(1).filter((row) => row.some(Boolean));
@@ -84,7 +87,9 @@ function doGet(event) {
 function doPost(event) {
   const payloadText = event.parameter.payload || (event.postData && event.postData.contents) || "{}";
   const payload = JSON.parse(payloadText);
-  const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+  const tasks = Array.isArray(payload.tasks)
+    ? payload.tasks.filter((task) => !String(task && task.id || "").startsWith(LIVE_COMPAT_PREFIX))
+    : [];
   const liveParticipants = Array.isArray(payload.liveParticipants) ? payload.liveParticipants : [];
   const sheet = getSheet();
   const rows = tasks.map((task) => HEADERS.map((header) => normalizeCell(task[header])));

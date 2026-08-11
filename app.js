@@ -77,6 +77,7 @@ const liveStorageKey = "coforyou-live-meeting-v1";
 const participantStorageKey = "coforyou-meeting-participant-v1";
 const paletteStorageKey = "coforyou-meeting-board-palette-v2";
 const monitorUnlockStorageKey = "coforyou-monitor-unlocked-v1";
+const liveCompatibilityPrefix = "__coforyou_live__";
 const MONITOR_PASSWORD = "0000";
 // Paste the Google Apps Script Web App URL here after deployment.
 const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyUz6zHDX9XzY1PpC0tHdZJg8dAh4Bk3IK0559zQGGzWVlXs3fcaK5RX-tE0lYoOdeLFg/exec";
@@ -345,6 +346,44 @@ function flattenLiveParticipants() {
   }));
 }
 
+function isLiveCompatibilityRow(item) {
+  return String(item?.id || "").startsWith(liveCompatibilityPrefix);
+}
+
+function flattenLiveCompatibilityRows() {
+  return flattenLiveParticipants().map((item) => ({
+    id: `${liveCompatibilityPrefix}${item.id}`,
+    department: item.department || departments[0],
+    category: "todo",
+    text: `Live: ${item.participantName}`,
+    sectionTitle: "",
+    owner: "",
+    due: "",
+    meetingTitle: item.meetingTitle,
+    meetingDate: item.meetingDate,
+    priority: "low",
+    notes: JSON.stringify(item),
+    done: item.status === "ended",
+    cocoEmailSentAt: "",
+    updatedAt: item.updatedAt,
+  }));
+}
+
+function liveParticipantsFromCompatibilityRows(rows) {
+  return ensureLiveParticipants(
+    rows
+      .filter(isLiveCompatibilityRow)
+      .map((row) => {
+        try {
+          return JSON.parse(String(row.notes || ""));
+        } catch (error) {
+          return null;
+        }
+      })
+      .filter(Boolean)
+  );
+}
+
 function flattenState() {
   return departments.flatMap((department) =>
     categories.flatMap((category) =>
@@ -581,7 +620,7 @@ function parseBoolean(value) {
 
 function loadSheetState(options = {}) {
   if (!SHEET_API_URL || sheetLoadPending) return;
-  const { silent = false } = options;
+  const { silent = false, onComplete = null, onError = null, skipPushLocal = false } = options;
   sheetLoadPending = true;
 
   const callbackName = `coforyouMeetingSheet${Date.now()}${Math.random().toString(16).slice(2)}`;
@@ -597,12 +636,15 @@ function loadSheetState(options = {}) {
   }
 
   window[callbackName] = (data) => {
-    const rows = Array.isArray(data) ? data : data.tasks || [];
+    const rawRows = Array.isArray(data) ? data : data.tasks || [];
+    const compatibilityParticipants = liveParticipantsFromCompatibilityRows(rawRows);
+    const rows = rawRows.filter((row) => !isLiveCompatibilityRow(row));
     const sheetState = stateFromRows(rows);
     const mergedState = mergeStates(sheetState, state);
     const sheetMinutes = data && Array.isArray(data.minutes) ? data.minutes : [];
     const mergedMinutes = mergeMinutes(sheetMinutes, meetingMinutes);
-    const sheetLiveParticipants = data && Array.isArray(data.liveParticipants) ? data.liveParticipants : [];
+    const nativeLiveParticipants = data && Array.isArray(data.liveParticipants) ? data.liveParticipants : [];
+    const sheetLiveParticipants = mergeLiveParticipants(nativeLiveParticipants, compatibilityParticipants);
     const mergedLiveParticipants = mergeLiveParticipants(sheetLiveParticipants, liveParticipants);
     const shouldPushLocalBack =
       countStateTasks(mergedState) > countStateTasks(sheetState) ||
@@ -613,15 +655,17 @@ function loadSheetState(options = {}) {
     liveParticipants = mergedLiveParticipants;
     saveLocalState();
     renderBoard();
-    if (shouldPushLocalBack) {
+    if (shouldPushLocalBack && !skipPushLocal) {
       queueSheetSave();
     }
     cleanup();
+    if (typeof onComplete === "function") onComplete();
   };
 
   script.onerror = () => {
     cleanup();
     if (!silent) showToast("Sheet 暂时同步不到，先用本地资料");
+    if (typeof onError === "function") onError();
   };
   timeoutId = window.setTimeout(script.onerror, 8000);
   script.src = `${SHEET_API_URL}${separator}callback=${callbackName}&t=${Date.now()}`;
@@ -643,7 +687,12 @@ function queueSheetRefresh(delay = 1800) {
 async function saveSheetState() {
   if (!SHEET_API_URL) return;
 
-  const payload = JSON.stringify({ tasks: flattenState(), minutes: flattenMinutes(), liveParticipants: flattenLiveParticipants() });
+  const regularTasks = flattenState().filter((item) => !isLiveCompatibilityRow(item));
+  const payload = JSON.stringify({
+    tasks: [...regularTasks, ...flattenLiveCompatibilityRows()],
+    minutes: flattenMinutes(),
+    liveParticipants: flattenLiveParticipants(),
+  });
   try {
     await fetch(SHEET_API_URL, {
       method: "POST",
@@ -783,7 +832,22 @@ function updateLiveDraft() {
 
 function queueLiveSave() {
   window.clearTimeout(liveSaveTimer);
-  liveSaveTimer = window.setTimeout(saveSheetState, 900);
+  liveSaveTimer = window.setTimeout(syncLatestLiveParticipantsBeforeSave, 450);
+}
+
+function syncLatestLiveParticipantsBeforeSave() {
+  if (!SHEET_API_URL) return;
+  if (sheetLoadPending) {
+    window.clearTimeout(liveSaveTimer);
+    liveSaveTimer = window.setTimeout(syncLatestLiveParticipantsBeforeSave, 500);
+    return;
+  }
+  loadSheetState({
+    silent: true,
+    skipPushLocal: true,
+    onComplete: saveSheetState,
+    onError: saveSheetState,
+  });
 }
 
 function getAllActiveParticipants() {
