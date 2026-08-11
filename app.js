@@ -78,6 +78,7 @@ const participantStorageKey = "coforyou-meeting-participant-v1";
 const paletteStorageKey = "coforyou-meeting-board-palette-v2";
 const monitorUnlockStorageKey = "coforyou-monitor-unlocked-v1";
 const liveCompatibilityPrefix = "__coforyou_live__";
+const minutesCompatibilityPrefix = "__coforyou_minutes__";
 const MONITOR_PASSWORD = "0000";
 // Paste the Google Apps Script Web App URL here after deployment.
 const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyUz6zHDX9XzY1PpC0tHdZJg8dAh4Bk3IK0559zQGGzWVlXs3fcaK5RX-tE0lYoOdeLFg/exec";
@@ -86,7 +87,7 @@ let activeTaskRef = null;
 let currentView = "board";
 let pageMode = "home";
 let state = ensureStateShape(loadState());
-let meetingMinutes = ensureMinutesShape(loadMinutes());
+let meetingMinutes = mergeMinutes(window.COFORYOU_SEEDED_MINUTES || [], ensureMinutesShape(loadMinutes()));
 let liveParticipants = ensureLiveParticipants(loadLiveParticipants());
 let sheetSaveTimer = null;
 let sheetRefreshTimer = null;
@@ -350,6 +351,14 @@ function isLiveCompatibilityRow(item) {
   return String(item?.id || "").startsWith(liveCompatibilityPrefix);
 }
 
+function isMinutesCompatibilityRow(item) {
+  return String(item?.id || "").startsWith(minutesCompatibilityPrefix);
+}
+
+function isCompatibilityRow(item) {
+  return isLiveCompatibilityRow(item) || isMinutesCompatibilityRow(item);
+}
+
 function flattenLiveCompatibilityRows() {
   return flattenLiveParticipants().map((item) => ({
     id: `${liveCompatibilityPrefix}${item.id}`,
@@ -373,6 +382,40 @@ function liveParticipantsFromCompatibilityRows(rows) {
   return ensureLiveParticipants(
     rows
       .filter(isLiveCompatibilityRow)
+      .map((row) => {
+        try {
+          return JSON.parse(String(row.notes || ""));
+        } catch (error) {
+          return null;
+        }
+      })
+      .filter(Boolean)
+  );
+}
+
+function flattenMinutesCompatibilityRows() {
+  return flattenMinutes().map((item) => ({
+    id: `${minutesCompatibilityPrefix}${item.id}`,
+    department: item.department || departments[0],
+    category: "todo",
+    text: `Minutes: ${item.participantName || "未填写姓名"}`,
+    sectionTitle: "",
+    owner: "",
+    due: "",
+    meetingTitle: item.title,
+    meetingDate: item.meetingDate,
+    priority: "low",
+    notes: JSON.stringify(item),
+    done: true,
+    cocoEmailSentAt: "",
+    updatedAt: item.createdAt,
+  }));
+}
+
+function minutesFromCompatibilityRows(rows) {
+  return ensureMinutesShape(
+    rows
+      .filter(isMinutesCompatibilityRow)
       .map((row) => {
         try {
           return JSON.parse(String(row.notes || ""));
@@ -638,10 +681,12 @@ function loadSheetState(options = {}) {
   window[callbackName] = (data) => {
     const rawRows = Array.isArray(data) ? data : data.tasks || [];
     const compatibilityParticipants = liveParticipantsFromCompatibilityRows(rawRows);
-    const rows = rawRows.filter((row) => !isLiveCompatibilityRow(row));
+    const compatibilityMinutes = minutesFromCompatibilityRows(rawRows);
+    const rows = rawRows.filter((row) => !isCompatibilityRow(row));
     const sheetState = stateFromRows(rows);
     const mergedState = mergeStates(sheetState, state);
-    const sheetMinutes = data && Array.isArray(data.minutes) ? data.minutes : [];
+    const nativeSheetMinutes = data && Array.isArray(data.minutes) ? data.minutes : [];
+    const sheetMinutes = mergeMinutes(nativeSheetMinutes, compatibilityMinutes);
     const mergedMinutes = mergeMinutes(sheetMinutes, meetingMinutes);
     const nativeLiveParticipants = data && Array.isArray(data.liveParticipants) ? data.liveParticipants : [];
     const sheetLiveParticipants = mergeLiveParticipants(nativeLiveParticipants, compatibilityParticipants);
@@ -687,9 +732,9 @@ function queueSheetRefresh(delay = 1800) {
 async function saveSheetState() {
   if (!SHEET_API_URL) return;
 
-  const regularTasks = flattenState().filter((item) => !isLiveCompatibilityRow(item));
+  const regularTasks = flattenState().filter((item) => !isCompatibilityRow(item));
   const payload = JSON.stringify({
-    tasks: [...regularTasks, ...flattenLiveCompatibilityRows()],
+    tasks: [...regularTasks, ...flattenLiveCompatibilityRows(), ...flattenMinutesCompatibilityRows()],
     minutes: flattenMinutes(),
     liveParticipants: flattenLiveParticipants(),
   });

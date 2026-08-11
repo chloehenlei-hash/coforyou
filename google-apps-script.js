@@ -2,6 +2,7 @@ const SHEET_NAME = "Meeting Board";
 const MINUTES_SHEET_NAME = "Meeting Minutes";
 const LIVE_SHEET_NAME = "Live Meeting";
 const LIVE_COMPAT_PREFIX = "__coforyou_live__";
+const MINUTES_COMPAT_PREFIX = "__coforyou_minutes__";
 const COCO_EMAIL = "PASTE_COCO_EMAIL_HERE";
 const GEMINI_MODEL = "gemini-3.5-flash";
 const GEMINI_FALLBACK_MODEL = "gemini-2.5-flash";
@@ -61,7 +62,7 @@ function doGet(event) {
         return task;
       }, {})
     )
-    .filter((task) => !String(task.id || "").startsWith(LIVE_COMPAT_PREFIX));
+    .filter((task) => !isCompatibilityTask(task));
   const minutesSheet = getMinutesSheet();
   const minutesValues = minutesSheet.getDataRange().getValues();
   const minutesRows = minutesValues.slice(1).filter((row) => row.some(Boolean));
@@ -88,7 +89,7 @@ function doPost(event) {
   const payloadText = event.parameter.payload || (event.postData && event.postData.contents) || "{}";
   const payload = JSON.parse(payloadText);
   const tasks = Array.isArray(payload.tasks)
-    ? payload.tasks.filter((task) => !String(task && task.id || "").startsWith(LIVE_COMPAT_PREFIX))
+    ? payload.tasks.filter((task) => !isCompatibilityTask(task))
     : [];
   const liveParticipants = Array.isArray(payload.liveParticipants) ? payload.liveParticipants : [];
   const sheet = getSheet();
@@ -127,6 +128,11 @@ function doPost(event) {
     minutes,
     liveParticipants: mergedLiveParticipants,
   });
+}
+
+function isCompatibilityTask(task) {
+  const id = String(task && task.id || "");
+  return id.startsWith(LIVE_COMPAT_PREFIX) || id.startsWith(MINUTES_COMPAT_PREFIX);
 }
 
 function sendCocoPendingEmailReminders() {
