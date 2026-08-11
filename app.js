@@ -76,6 +76,8 @@ const minutesStorageKey = "coforyou-meeting-minutes-v1";
 const liveStorageKey = "coforyou-live-meeting-v1";
 const participantStorageKey = "coforyou-meeting-participant-v1";
 const paletteStorageKey = "coforyou-meeting-board-palette-v2";
+const monitorUnlockStorageKey = "coforyou-monitor-unlocked-v1";
+const MONITOR_PASSWORD = "0000";
 // Paste the Google Apps Script Web App URL here after deployment.
 const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyUz6zHDX9XzY1PpC0tHdZJg8dAh4Bk3IK0559zQGGzWVlXs3fcaK5RX-tE0lYoOdeLFg/exec";
 let activeDepartment = departments[0];
@@ -88,10 +90,14 @@ let liveParticipants = ensureLiveParticipants(loadLiveParticipants());
 let sheetSaveTimer = null;
 let sheetRefreshTimer = null;
 let liveSaveTimer = null;
+let sheetLoadPending = false;
+let lastSheetPollAt = 0;
+let selectedRecordsPeriod = "";
 let pendingPreviewTasks = [];
 let recentTaskIds = new Set();
 let lastCocoPendingCount = null;
 let currentParticipantId = localStorage.getItem(participantStorageKey) || "";
+let monitorUnlocked = sessionStorage.getItem(monitorUnlockStorageKey) === "true";
 
 const continuationPrefixes = [
   "后续优化",
@@ -121,6 +127,8 @@ const livePanel = document.querySelector("#livePanel");
 const participantName = document.querySelector("#participantName");
 const liveMeetingTitle = document.querySelector("#liveMeetingTitle");
 const liveMeetingDate = document.querySelector("#liveMeetingDate");
+const liveMeetingMonth = document.querySelector("#liveMeetingMonth");
+const liveMeetingWeek = document.querySelector("#liveMeetingWeek");
 const liveMinutesDraft = document.querySelector("#liveMinutesDraft");
 const joinLiveMeetingButton = document.querySelector("#joinLiveMeetingButton");
 const endLiveMeetingButton = document.querySelector("#endLiveMeetingButton");
@@ -132,9 +140,16 @@ const liveParticipantCount = document.querySelector("#liveParticipantCount");
 const liveMonitorList = document.querySelector("#liveMonitorList");
 const openMonitorButton = document.querySelector("#openMonitorButton");
 const openRecordsButton = document.querySelector("#openRecordsButton");
+const topbarLiveDot = document.querySelector("#topbarLiveDot");
 const closeMonitorButton = document.querySelector("#closeMonitorButton");
 const closeRecordsButton = document.querySelector("#closeRecordsButton");
 const monitorPage = document.querySelector("#monitorPage");
+const monitorPasswordModal = document.querySelector("#monitorPasswordModal");
+const monitorPasswordForm = document.querySelector("#monitorPasswordForm");
+const monitorPasswordInput = document.querySelector("#monitorPasswordInput");
+const monitorPasswordError = document.querySelector("#monitorPasswordError");
+const closeMonitorPasswordButton = document.querySelector("#closeMonitorPasswordButton");
+const cancelMonitorPasswordButton = document.querySelector("#cancelMonitorPasswordButton");
 const recordsPage = document.querySelector("#recordsPage");
 const minutesPanel = document.querySelector("#minutesPanel");
 const minutesTitle = document.querySelector("#minutesTitle");
@@ -145,6 +160,8 @@ const clearMinutesButton = document.querySelector("#clearMinutesButton");
 const toggleMinutesArchiveButton = document.querySelector("#toggleMinutesArchiveButton");
 const minutesCount = document.querySelector("#minutesCount");
 const topRecordsCount = document.querySelector("#topRecordsCount");
+const recordsBackButton = document.querySelector("#recordsBackButton");
+const recordsBreadcrumb = document.querySelector("#recordsBreadcrumb");
 const homeButton = document.querySelector("#homeButton");
 const minutesList = document.querySelector("#minutesList");
 const previewPanel = document.querySelector("#previewPanel");
@@ -429,6 +446,65 @@ function isFallbackSummary(summary) {
   return /^(整理摘要|AI Summary)\s*-/i.test(String(summary || "").trim());
 }
 
+function getCurrentMonthKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getCurrentWeekKey() {
+  const week = Math.min(4, Math.max(1, Math.ceil(new Date().getDate() / 7)));
+  return `W${week}`;
+}
+
+function createPeriodKey(monthKey, weekKey) {
+  const safeMonth = /^\d{4}-\d{2}$/.test(monthKey || "") ? monthKey : getCurrentMonthKey();
+  const safeWeek = /^W[1-4]$/.test(weekKey || "") ? weekKey : getCurrentWeekKey();
+  return `${safeMonth}-${safeWeek}`;
+}
+
+function getPeriodKey(value) {
+  const text = String(value || "").trim();
+  if (/^\d{4}-\d{2}-W[1-4]$/.test(text)) return text;
+  const dateMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!dateMatch) return "";
+  const week = Math.min(4, Math.max(1, Math.ceil(Number(dateMatch[3]) / 7)));
+  return `${dateMatch[1]}-${dateMatch[2]}-W${week}`;
+}
+
+function formatPeriodLabel(value) {
+  const periodKey = getPeriodKey(value);
+  const match = periodKey.match(/^(\d{4})-(\d{2})-W([1-4])$/);
+  if (!match) return String(value || "未分类");
+  return `${Number(match[2])}月 · Week ${match[3]}`;
+}
+
+function populateMonthOptions() {
+  if (!liveMeetingMonth) return;
+  const year = new Date().getFullYear();
+  liveMeetingMonth.innerHTML = Array.from({ length: 12 }, (_, index) => {
+    const month = String(index + 1).padStart(2, "0");
+    return `<option value="${year}-${month}">${index + 1}月</option>`;
+  }).join("");
+}
+
+function setLivePeriodFromKey(value) {
+  const periodKey = getPeriodKey(value) || createPeriodKey(getCurrentMonthKey(), getCurrentWeekKey());
+  const match = periodKey.match(/^(\d{4}-\d{2})-(W[1-4])$/);
+  if (!match) return periodKey;
+  if (liveMeetingMonth && Array.from(liveMeetingMonth.options).some((option) => option.value === match[1])) {
+    liveMeetingMonth.value = match[1];
+  }
+  if (liveMeetingWeek) liveMeetingWeek.value = match[2];
+  liveMeetingDate.value = periodKey;
+  return periodKey;
+}
+
+function syncLivePeriodField() {
+  const periodKey = createPeriodKey(liveMeetingMonth?.value, liveMeetingWeek?.value);
+  liveMeetingDate.value = periodKey;
+  return periodKey;
+}
+
 function mergeLiveParticipants(sheetParticipants, localParticipants) {
   const byId = new Map();
   [...ensureLiveParticipants(sheetParticipants), ...ensureLiveParticipants(localParticipants)].forEach((item) => {
@@ -438,7 +514,7 @@ function mergeLiveParticipants(sheetParticipants, localParticipants) {
   return ensureLiveParticipants(Array.from(byId.values()));
 }
 
-function createMeetingId(department = activeDepartment, date = liveMeetingDate?.value || getToday(), title = liveMeetingTitle?.value || "") {
+function createMeetingId(department = activeDepartment, date = getToday(), title = "") {
   const safeDepartment = normalizeDepartment(department) || activeDepartment || departments[0];
   const safeDate = date || getToday();
   const safeTitle = String(title || `${safeDepartment} Meeting`).trim().toLowerCase().replace(/\s+/g, "-");
@@ -504,8 +580,9 @@ function parseBoolean(value) {
 }
 
 function loadSheetState(options = {}) {
-  if (!SHEET_API_URL) return;
+  if (!SHEET_API_URL || sheetLoadPending) return;
   const { silent = false } = options;
+  sheetLoadPending = true;
 
   const callbackName = `coforyouMeetingSheet${Date.now()}${Math.random().toString(16).slice(2)}`;
   const separator = SHEET_API_URL.includes("?") ? "&" : "?";
@@ -514,6 +591,7 @@ function loadSheetState(options = {}) {
 
   function cleanup() {
     window.clearTimeout(timeoutId);
+    sheetLoadPending = false;
     delete window[callbackName];
     script.remove();
   }
@@ -583,7 +661,7 @@ function getCurrentMeetingTitle() {
 }
 
 function getCurrentLiveParticipant() {
-  const meetingId = createMeetingId(activeDepartment, liveMeetingDate.value || getToday(), getCurrentMeetingTitle());
+  const meetingId = createMeetingId(activeDepartment, syncLivePeriodField(), getCurrentMeetingTitle());
   if (currentParticipantId) {
     const existing = liveParticipants.find((item) => item.id === currentParticipantId);
     if (existing && existing.department === activeDepartment && existing.meetingId === meetingId) return existing;
@@ -600,7 +678,7 @@ function upsertLiveParticipant(partial = {}) {
   }
 
   const now = new Date().toISOString();
-  const meetingDateValue = liveMeetingDate.value || getToday();
+  const meetingDateValue = syncLivePeriodField();
   const meetingTitleValue = getCurrentMeetingTitle();
   const meetingId = createMeetingId(activeDepartment, meetingDateValue, meetingTitleValue);
   let participant = getCurrentLiveParticipant();
@@ -708,10 +786,9 @@ function queueLiveSave() {
   liveSaveTimer = window.setTimeout(saveSheetState, 900);
 }
 
-function getActiveMeetingParticipants() {
-  const meetingId = createMeetingId(activeDepartment, liveMeetingDate.value || getToday(), getCurrentMeetingTitle());
+function getAllActiveParticipants() {
   return ensureLiveParticipants(liveParticipants)
-    .filter((item) => item.meetingId === meetingId && item.department === activeDepartment && item.status !== "ended")
+    .filter((item) => item.status !== "ended")
     .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
 }
 
@@ -732,9 +809,12 @@ function renderLiveRoom() {
   if (current) {
     participantName.value = current.participantName || participantName.value;
     liveMeetingTitle.value = current.meetingTitle || liveMeetingTitle.value;
-    liveMeetingDate.value = current.meetingDate || liveMeetingDate.value || getToday();
+    setLivePeriodFromKey(current.meetingDate || liveMeetingDate.value);
     if (document.activeElement !== liveMinutesDraft) liveMinutesDraft.value = current.draft || "";
   }
+  const periodLocked = Boolean(current && current.status !== "ended");
+  if (liveMeetingMonth) liveMeetingMonth.disabled = periodLocked;
+  if (liveMeetingWeek) liveMeetingWeek.disabled = periodLocked;
 
   const selfInfo = current ? getLiveStatusInfo(current) : { label: "还没进入", className: "live-empty" };
   liveSelfStatus.hidden = Boolean(current);
@@ -742,8 +822,12 @@ function renderLiveRoom() {
   liveSelfStatus.className = `live-status-pill ${selfInfo.className}`;
   renderLiveIndicator(current, selfInfo);
 
-  const participants = getActiveMeetingParticipants();
+  const participants = getAllActiveParticipants();
   liveParticipantCount.textContent = participants.length;
+  if (topbarLiveDot) {
+    topbarLiveDot.hidden = participants.length === 0;
+    topbarLiveDot.setAttribute("aria-label", `${participants.length} 人正在记录`);
+  }
   liveMonitorList.innerHTML = participants.length
     ? participants
         .map((item) => {
@@ -763,6 +847,7 @@ function renderLiveRoom() {
                 <span class="live-status-pill ${info.className}">${escapeHtml(info.label)}</span>
               </div>
               <div class="live-person-meta">
+                <span>${escapeHtml(formatPeriodLabel(item.meetingDate))}</span>
                 <span>加入 ${escapeHtml(formatLiveClock(item.joinedAt))}</span>
                 <span>最后记录 ${escapeHtml(formatLiveClock(item.lastTypingAt || item.updatedAt))}</span>
                 ${item.savedAt ? `<span>已保存 ${escapeHtml(formatLiveClock(item.savedAt))}</span>` : ""}
@@ -1354,6 +1439,42 @@ function renderBoardContent() {
   renderMinutesArchive();
 }
 
+function closeMonitorPassword() {
+  if (monitorPasswordModal?.open) monitorPasswordModal.close();
+  if (monitorPasswordInput) monitorPasswordInput.value = "";
+  if (monitorPasswordError) monitorPasswordError.hidden = true;
+  if (!monitorUnlocked && window.location.hash === "#monitor") {
+    history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  }
+}
+
+function requestMonitorAccess(options = {}) {
+  if (monitorUnlocked) {
+    navigatePage("monitor", options);
+    loadSheetState({ silent: true });
+    return;
+  }
+  if (monitorPasswordError) monitorPasswordError.hidden = true;
+  if (monitorPasswordInput) monitorPasswordInput.value = "";
+  if (monitorPasswordModal && !monitorPasswordModal.open) monitorPasswordModal.showModal();
+  window.setTimeout(() => monitorPasswordInput?.focus(), 0);
+}
+
+function submitMonitorPassword(event) {
+  event.preventDefault();
+  if (monitorPasswordInput?.value !== MONITOR_PASSWORD) {
+    monitorPasswordError.hidden = false;
+    monitorPasswordInput.select();
+    return;
+  }
+  monitorUnlocked = true;
+  sessionStorage.setItem(monitorUnlockStorageKey, "true");
+  if (monitorPasswordModal?.open) monitorPasswordModal.close();
+  navigatePage("monitor", { skipHash: window.location.hash === "#monitor" });
+  lastSheetPollAt = Date.now();
+  loadSheetState({ silent: true });
+}
+
 function navigatePage(nextMode, options = {}) {
   pageMode = ["home", "monitor", "records"].includes(nextMode) ? nextMode : "home";
   currentView = "board";
@@ -1508,32 +1629,94 @@ function getDepartmentMinutes(department = activeDepartment) {
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
 }
 
+function groupMinutesByPeriod(minutes) {
+  const groups = new Map();
+  minutes.forEach((item) => {
+    const periodKey = getPeriodKey(item.meetingDate) || "unclassified";
+    if (!groups.has(periodKey)) groups.set(periodKey, []);
+    groups.get(periodKey).push(item);
+  });
+  return Array.from(groups.entries()).sort(([periodA], [periodB]) => periodB.localeCompare(periodA));
+}
+
+function renderPeriodCards(minutes) {
+  return groupMinutesByPeriod(minutes)
+    .map(([periodKey, items]) => {
+      const participantNames = Array.from(
+        new Set(items.map((item) => item.participantName || "未填写姓名"))
+      ).sort((a, b) => a.localeCompare(b, "zh-CN"));
+      return `
+        <button class="minutes-item period-item" type="button" data-period-key="${escapeAttribute(periodKey)}">
+          <span class="period-item-label">会议周期</span>
+          <span class="minutes-item-top">
+            <strong>${escapeHtml(periodKey === "unclassified" ? "其他记录" : formatPeriodLabel(periodKey))}</strong>
+            <em>${items.length} 份记录</em>
+          </span>
+          <span class="period-participant-count">${participantNames.length} 位记录者</span>
+          <span class="period-participant-names">${escapeHtml(participantNames.join("、"))}</span>
+          <span class="minutes-item-action">查看每个人的记录</span>
+        </button>
+      `;
+    })
+    .join("");
+}
+
+function renderParticipantRecords(minutes, periodKey) {
+  return minutes
+    .filter((item) => (getPeriodKey(item.meetingDate) || "unclassified") === periodKey)
+    .sort((a, b) => {
+      const nameOrder = String(a.participantName || "").localeCompare(String(b.participantName || ""), "zh-CN");
+      return nameOrder || String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+    })
+    .map(
+      (item) => `
+        <button class="minutes-item participant-record-item" type="button" data-minutes-id="${escapeAttribute(item.id)}">
+          <span class="participant-record-person">
+            <span class="participant-record-avatar">${escapeHtml(getParticipantInitial(item.participantName))}</span>
+            <span>
+              <small>记录者</small>
+              <strong>${escapeHtml(item.participantName || "未填写姓名")}</strong>
+            </span>
+          </span>
+          <span class="minutes-item-top">
+            <span class="participant-record-title">${escapeHtml(item.title)}</span>
+            <em>${item.summary ? "AI 已整理" : "原始记录"}</em>
+          </span>
+          <span class="minutes-item-preview">${escapeHtml(getMinutePreview(item))}</span>
+          <span class="minutes-item-meta">
+            <span>${escapeHtml(formatCreatedAt(item.createdAt))}</span>
+          </span>
+          <span class="minutes-item-action">查看完整记录</span>
+        </button>
+      `
+    )
+    .join("");
+}
+
 function renderMinutesArchive() {
   const minutes = getDepartmentMinutes();
   minutesCount.textContent = minutes.length;
   if (topRecordsCount) topRecordsCount.textContent = minutes.length;
-  minutesList.classList.toggle("single-record", minutes.length === 1);
+  const selectedMinutes = selectedRecordsPeriod
+    ? minutes.filter((item) => (getPeriodKey(item.meetingDate) || "unclassified") === selectedRecordsPeriod)
+    : [];
+  if (selectedRecordsPeriod && selectedMinutes.length === 0) selectedRecordsPeriod = "";
+
+  const isPeriodOpen = Boolean(selectedRecordsPeriod);
+  if (recordsBackButton) recordsBackButton.hidden = !isPeriodOpen;
+  if (recordsBreadcrumb) {
+    recordsBreadcrumb.textContent = isPeriodOpen
+      ? selectedRecordsPeriod === "unclassified" ? "其他记录" : formatPeriodLabel(selectedRecordsPeriod)
+      : "按月份与 Week 查看";
+  }
+  minutesList.classList.toggle("period-list", !isPeriodOpen);
+  minutesList.classList.toggle("participant-record-list", isPeriodOpen);
+  minutesList.classList.toggle("single-record", isPeriodOpen && selectedMinutes.length === 1);
   minutesList.innerHTML = minutes.length
-    ? minutes
-        .map(
-          (item) => `
-            <button class="minutes-item" type="button" data-minutes-id="${escapeAttribute(item.id)}">
-              <span class="minutes-item-top">
-                <strong>${escapeHtml(item.title)}</strong>
-                <em>${item.summary ? "已整理" : "原始记录"}</em>
-              </span>
-              <span class="minutes-item-meta">
-                <span>${escapeHtml(item.meetingDate || "日期待补充")}</span>
-                <span>${escapeHtml(item.participantName || "Recorder 待补充")}</span>
-                <span>${escapeHtml(formatCreatedAt(item.createdAt))}</span>
-              </span>
-              <span class="minutes-item-preview">${escapeHtml(getMinutePreview(item))}</span>
-              <span class="minutes-item-action">打开记录</span>
-            </button>
-          `
-        )
-        .join("")
-    : '<div class="empty-state">这个部门暂时没有会议记录。</div>';
+    ? isPeriodOpen
+      ? renderParticipantRecords(minutes, selectedRecordsPeriod)
+      : renderPeriodCards(minutes)
+    : '<div class="empty-state">这里还没有已保存的会议记录。</div>';
 }
 
 function getMinutePreview(item) {
@@ -1583,7 +1766,7 @@ function openMinutesModal(minutesId) {
   minutesModalDepartment.textContent = `${item.department} · LOCKED`;
   minutesModalTitle.textContent = item.title;
   minutesModalMeta.innerHTML = `
-    <span>${escapeHtml(item.meetingDate || "日期待补充")}</span>
+    <span>${escapeHtml(formatPeriodLabel(item.meetingDate))}</span>
     ${item.participantName ? `<span>Recorder: ${escapeHtml(item.participantName)}</span>` : ""}
     <span>${escapeHtml(formatCreatedAt(item.createdAt))}</span>
     <span>只读</span>
@@ -1836,18 +2019,34 @@ liveMeetingTitle.addEventListener("change", () => {
   if (current && current.status !== "ended") upsertLiveParticipant();
   renderLiveRoom();
 });
-liveMeetingDate.addEventListener("change", () => {
-  meetingDate.value = liveMeetingDate.value;
+function handleLivePeriodChange() {
+  syncLivePeriodField();
   const current = getCurrentLiveParticipant();
   if (current && current.status !== "ended") upsertLiveParticipant();
   renderLiveRoom();
-});
+}
+liveMeetingMonth?.addEventListener("change", handleLivePeriodChange);
+liveMeetingWeek?.addEventListener("change", handleLivePeriodChange);
 liveMinutesDraft.addEventListener("input", updateLiveDraft);
 openMonitorButton?.addEventListener("click", () => {
-  navigatePage("monitor");
+  requestMonitorAccess();
+});
+monitorPasswordForm?.addEventListener("submit", submitMonitorPassword);
+closeMonitorPasswordButton?.addEventListener("click", closeMonitorPassword);
+cancelMonitorPasswordButton?.addEventListener("click", closeMonitorPassword);
+monitorPasswordModal?.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeMonitorPassword();
+});
+monitorPasswordModal?.addEventListener("click", (event) => {
+  if (event.target === monitorPasswordModal) closeMonitorPassword();
 });
 openRecordsButton?.addEventListener("click", () => {
   navigatePage("records");
+});
+recordsBackButton?.addEventListener("click", () => {
+  selectedRecordsPeriod = "";
+  renderMinutesArchive();
 });
 closeMonitorButton?.addEventListener("click", () => {
   navigatePage("home");
@@ -1866,6 +2065,13 @@ toggleMinutesArchiveButton.addEventListener("click", () => {
   renderMinutesArchive();
 });
 minutesList.addEventListener("click", (event) => {
+  const periodButton = event.target.closest("[data-period-key]");
+  if (periodButton) {
+    selectedRecordsPeriod = periodButton.dataset.periodKey;
+    renderMinutesArchive();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
   const button = event.target.closest("[data-minutes-id]");
   if (!button) return;
   openMinutesModal(button.dataset.minutesId);
@@ -1896,21 +2102,35 @@ minutesModal.addEventListener("click", (event) => {
 });
 window.addEventListener("popstate", () => {
   const hashMode = window.location.hash.replace("#", "");
+  if (hashMode === "monitor" && !monitorUnlocked) {
+    pageMode = "home";
+    renderBoard();
+    requestMonitorAccess({ skipHash: true });
+    return;
+  }
   pageMode = ["monitor", "records"].includes(hashMode) ? hashMode : "home";
   renderBoard();
 });
 
 meetingDate.value = getToday();
 minutesDate.value = getToday();
-liveMeetingDate.value = getToday();
+populateMonthOptions();
+liveMeetingMonth.value = getCurrentMonthKey();
+liveMeetingWeek.value = getCurrentWeekKey();
+syncLivePeriodField();
 liveMeetingTitle.value = "Weekly Meeting";
 meetingTitle.value = liveMeetingTitle.value;
-pageMode = ["monitor", "records"].includes(window.location.hash.replace("#", ""))
-  ? window.location.hash.replace("#", "")
-  : "home";
+const initialHashMode = window.location.hash.replace("#", "");
+const initialMonitorLocked = initialHashMode === "monitor" && !monitorUnlocked;
+pageMode = initialMonitorLocked
+  ? "home"
+  : ["monitor", "records"].includes(initialHashMode)
+    ? initialHashMode
+    : "home";
 applyPalette(loadPalette());
 renderBoard();
 loadSheetState();
+if (initialMonitorLocked) requestMonitorAccess({ skipHash: true });
 window.setInterval(() => {
   const current = getCurrentLiveParticipant();
   if (current && current.status !== "saved") {
@@ -1920,6 +2140,12 @@ window.setInterval(() => {
   }
   renderLiveRoom();
 }, 10000);
+window.setInterval(() => {
+  const pollInterval = pageMode === "monitor" ? 5000 : 15000;
+  if (Date.now() - lastSheetPollAt < pollInterval) return;
+  lastSheetPollAt = Date.now();
+  loadSheetState({ silent: true });
+}, 5000);
 window.setInterval(() => {
   const current = getCurrentLiveParticipant();
   if (!current || current.status === "ended" || !String(liveMinutesDraft.value || current.draft || "").trim()) return;
