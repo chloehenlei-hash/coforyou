@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Coforyou Live Meeting Minutes</title>
-    <link rel="stylesheet" href="./styles.css?v=20260811-3" />
+    <link rel="stylesheet" href="./styles.css?v=20260817-1" />
   </head>
   <body>
     <header class="topbar">
@@ -328,10 +328,49 @@
           </div>
           <button class="modal-close" id="closeMinutesModalButton" type="button" aria-label="关闭">×</button>
         </div>
-        <div class="minutes-read-meta" id="minutesModalMeta"></div>
-        <section class="minutes-summary-box" id="minutesModalSummary" hidden></section>
-        <pre class="minutes-read-body" id="minutesModalBody"></pre>
+        <div class="minutes-modal-read" id="minutesModalReadView">
+          <div class="minutes-read-meta" id="minutesModalMeta"></div>
+          <section class="minutes-summary-box" id="minutesModalSummary" hidden></section>
+          <pre class="minutes-read-body" id="minutesModalBody"></pre>
+        </div>
+        <div class="minutes-edit-form" id="minutesModalEditView" hidden>
+          <div class="modal-grid">
+            <label class="field">
+              <span>记录者</span>
+              <input id="minutesEditParticipant" type="text" />
+            </label>
+            <label class="field">
+              <span>会议主题</span>
+              <input id="minutesEditTitle" type="text" />
+            </label>
+            <label class="field">
+              <span>月份</span>
+              <input id="minutesEditMonth" type="month" />
+            </label>
+            <label class="field">
+              <span>Week</span>
+              <select id="minutesEditWeek">
+                <option value="W1">Week 1</option>
+                <option value="W2">Week 2</option>
+                <option value="W3">Week 3</option>
+                <option value="W4">Week 4</option>
+              </select>
+            </label>
+          </div>
+          <label class="field">
+            <span>原始记录</span>
+            <textarea id="minutesEditBody"></textarea>
+          </label>
+          <label class="field">
+            <span>整理摘要</span>
+            <textarea id="minutesEditSummary"></textarea>
+          </label>
+        </div>
         <div class="modal-actions">
+          <button class="danger-button" id="deleteMinutesButton" type="button">删除记录</button>
+          <button class="ghost-button" id="editMinutesButton" type="button">编辑</button>
+          <button class="ghost-button" id="cancelMinutesEditButton" type="button" hidden>取消</button>
+          <button class="primary-button" id="saveMinutesEditButton" type="button" hidden>保存更改</button>
           <button class="primary-button" id="closeMinutesModalFooterButton" type="button">关闭</button>
         </div>
       </form>
@@ -339,7 +378,7 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-    <script src="./seeded-minutes.js?v=20260811-3"></script>
-    <script src="./app.js?v=20260811-3"></script>
+    <script src="./seeded-minutes.js?v=20260817-1"></script>
+    <script src="./app.js?v=20260817-1"></script>
   </body>
 </html>

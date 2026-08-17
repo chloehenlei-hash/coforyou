@@ -55,3 +55,6 @@ window.COFORYOU_SEEDED_MINUTES = [
     "locked": true
   }
 ];
+window.COFORYOU_SEEDED_MINUTE_DELETIONS = [
+  { key: "period:2026-07-W2", deletedAt: "2026-08-17T00:00:00.000Z" }
+];

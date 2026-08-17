@@ -73,12 +73,14 @@ const categories = [
 
 const storageKey = "coforyou-meeting-board-v1";
 const minutesStorageKey = "coforyou-meeting-minutes-v1";
+const deletedMinutesStorageKey = "coforyou-deleted-meeting-minutes-v1";
 const liveStorageKey = "coforyou-live-meeting-v1";
 const participantStorageKey = "coforyou-meeting-participant-v1";
 const paletteStorageKey = "coforyou-meeting-board-palette-v2";
 const monitorUnlockStorageKey = "coforyou-monitor-unlocked-v1";
 const liveCompatibilityPrefix = "__coforyou_live__";
 const minutesCompatibilityPrefix = "__coforyou_minutes__";
+const minutesDeletionCompatibilityPrefix = "__coforyou_minutes_deleted__";
 const MONITOR_PASSWORD = "0000";
 // Paste the Google Apps Script Web App URL here after deployment.
 const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyUz6zHDX9XzY1PpC0tHdZJg8dAh4Bk3IK0559zQGGzWVlXs3fcaK5RX-tE0lYoOdeLFg/exec";
@@ -87,7 +89,14 @@ let activeTaskRef = null;
 let currentView = "board";
 let pageMode = "home";
 let state = ensureStateShape(loadState());
-let meetingMinutes = mergeMinutes(window.COFORYOU_SEEDED_MINUTES || [], ensureMinutesShape(loadMinutes()));
+let deletedMinutes = mergeMinuteDeletions(
+  window.COFORYOU_SEEDED_MINUTE_DELETIONS || [],
+  loadDeletedMinutes()
+);
+let meetingMinutes = applyMinuteDeletions(
+  mergeMinutes(window.COFORYOU_SEEDED_MINUTES || [], ensureMinutesShape(loadMinutes())),
+  deletedMinutes
+);
 let liveParticipants = ensureLiveParticipants(loadLiveParticipants());
 let sheetSaveTimer = null;
 let sheetRefreshTimer = null;
@@ -100,6 +109,7 @@ let recentTaskIds = new Set();
 let lastCocoPendingCount = null;
 let currentParticipantId = localStorage.getItem(participantStorageKey) || "";
 let monitorUnlocked = sessionStorage.getItem(monitorUnlockStorageKey) === "true";
+let activeMinutesId = "";
 
 const continuationPrefixes = [
   "后续优化",
@@ -195,6 +205,18 @@ const minutesModalTitle = document.querySelector("#minutesModalTitle");
 const minutesModalMeta = document.querySelector("#minutesModalMeta");
 const minutesModalSummary = document.querySelector("#minutesModalSummary");
 const minutesModalBody = document.querySelector("#minutesModalBody");
+const minutesModalReadView = document.querySelector("#minutesModalReadView");
+const minutesModalEditView = document.querySelector("#minutesModalEditView");
+const minutesEditParticipant = document.querySelector("#minutesEditParticipant");
+const minutesEditTitle = document.querySelector("#minutesEditTitle");
+const minutesEditMonth = document.querySelector("#minutesEditMonth");
+const minutesEditWeek = document.querySelector("#minutesEditWeek");
+const minutesEditBody = document.querySelector("#minutesEditBody");
+const minutesEditSummary = document.querySelector("#minutesEditSummary");
+const deleteMinutesButton = document.querySelector("#deleteMinutesButton");
+const editMinutesButton = document.querySelector("#editMinutesButton");
+const cancelMinutesEditButton = document.querySelector("#cancelMinutesEditButton");
+const saveMinutesEditButton = document.querySelector("#saveMinutesEditButton");
 const closeMinutesModalButton = document.querySelector("#closeMinutesModalButton");
 const closeMinutesModalFooterButton = document.querySelector("#closeMinutesModalFooterButton");
 const toast = document.querySelector("#toast");
@@ -262,6 +284,7 @@ function saveState() {
 function saveLocalState() {
   localStorage.setItem(storageKey, JSON.stringify(state));
   localStorage.setItem(minutesStorageKey, JSON.stringify(meetingMinutes));
+  localStorage.setItem(deletedMinutesStorageKey, JSON.stringify(deletedMinutes));
   localStorage.setItem(liveStorageKey, JSON.stringify(liveParticipants));
 }
 
@@ -273,6 +296,44 @@ function loadMinutes() {
     // Ignore broken local minutes and rebuild below.
   }
   return [];
+}
+
+function loadDeletedMinutes() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(deletedMinutesStorageKey));
+    if (saved) return saved;
+  } catch (error) {
+    // Ignore broken deletion records and rebuild below.
+  }
+  return [];
+}
+
+function ensureMinuteDeletions(items) {
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter((item) => item && typeof item === "object" && item.key)
+    .map((item) => ({
+      key: String(item.key),
+      deletedAt: item.deletedAt || new Date().toISOString(),
+    }));
+}
+
+function mergeMinuteDeletions(first, second) {
+  const byKey = new Map();
+  [...ensureMinuteDeletions(first), ...ensureMinuteDeletions(second)].forEach((item) => {
+    const existing = byKey.get(item.key);
+    if (!existing || String(item.deletedAt).localeCompare(String(existing.deletedAt)) >= 0) {
+      byKey.set(item.key, item);
+    }
+  });
+  return Array.from(byKey.values());
+}
+
+function applyMinuteDeletions(minutes, deletions = deletedMinutes) {
+  const keys = new Set(ensureMinuteDeletions(deletions).map((item) => item.key));
+  return ensureMinutesShape(minutes).filter(
+    (item) => !keys.has(`id:${item.id}`) && !keys.has(`period:${getPeriodKey(item.meetingDate)}`)
+  );
 }
 
 function ensureMinutesShape(savedMinutes) {
@@ -355,8 +416,12 @@ function isMinutesCompatibilityRow(item) {
   return String(item?.id || "").startsWith(minutesCompatibilityPrefix);
 }
 
+function isMinutesDeletionCompatibilityRow(item) {
+  return String(item?.id || "").startsWith(minutesDeletionCompatibilityPrefix);
+}
+
 function isCompatibilityRow(item) {
-  return isLiveCompatibilityRow(item) || isMinutesCompatibilityRow(item);
+  return isLiveCompatibilityRow(item) || isMinutesCompatibilityRow(item) || isMinutesDeletionCompatibilityRow(item);
 }
 
 function flattenLiveCompatibilityRows() {
@@ -416,6 +481,40 @@ function minutesFromCompatibilityRows(rows) {
   return ensureMinutesShape(
     rows
       .filter(isMinutesCompatibilityRow)
+      .map((row) => {
+        try {
+          return JSON.parse(String(row.notes || ""));
+        } catch (error) {
+          return null;
+        }
+      })
+      .filter(Boolean)
+  );
+}
+
+function flattenMinutesDeletionCompatibilityRows() {
+  return ensureMinuteDeletions(deletedMinutes).map((item) => ({
+    id: `${minutesDeletionCompatibilityPrefix}${encodeURIComponent(item.key)}`,
+    department: departments[0],
+    category: "todo",
+    text: "Deleted meeting minutes",
+    sectionTitle: "",
+    owner: "",
+    due: "",
+    meetingTitle: "",
+    meetingDate: "",
+    priority: "low",
+    notes: JSON.stringify(item),
+    done: true,
+    cocoEmailSentAt: "",
+    updatedAt: item.deletedAt,
+  }));
+}
+
+function minuteDeletionsFromCompatibilityRows(rows) {
+  return ensureMinuteDeletions(
+    rows
+      .filter(isMinutesDeletionCompatibilityRow)
       .map((row) => {
         try {
           return JSON.parse(String(row.notes || ""));
@@ -682,21 +781,25 @@ function loadSheetState(options = {}) {
     const rawRows = Array.isArray(data) ? data : data.tasks || [];
     const compatibilityParticipants = liveParticipantsFromCompatibilityRows(rawRows);
     const compatibilityMinutes = minutesFromCompatibilityRows(rawRows);
+    const compatibilityMinuteDeletions = minuteDeletionsFromCompatibilityRows(rawRows);
     const rows = rawRows.filter((row) => !isCompatibilityRow(row));
     const sheetState = stateFromRows(rows);
     const mergedState = mergeStates(sheetState, state);
     const nativeSheetMinutes = data && Array.isArray(data.minutes) ? data.minutes : [];
     const sheetMinutes = mergeMinutes(nativeSheetMinutes, compatibilityMinutes);
-    const mergedMinutes = mergeMinutes(sheetMinutes, meetingMinutes);
+    const mergedMinuteDeletions = mergeMinuteDeletions(compatibilityMinuteDeletions, deletedMinutes);
+    const mergedMinutes = applyMinuteDeletions(mergeMinutes(sheetMinutes, meetingMinutes), mergedMinuteDeletions);
     const nativeLiveParticipants = data && Array.isArray(data.liveParticipants) ? data.liveParticipants : [];
     const sheetLiveParticipants = mergeLiveParticipants(nativeLiveParticipants, compatibilityParticipants);
     const mergedLiveParticipants = mergeLiveParticipants(sheetLiveParticipants, liveParticipants);
     const shouldPushLocalBack =
       countStateTasks(mergedState) > countStateTasks(sheetState) ||
       mergedMinutes.length > ensureMinutesShape(sheetMinutes).length ||
+      mergedMinuteDeletions.length > compatibilityMinuteDeletions.length ||
       mergedLiveParticipants.length > ensureLiveParticipants(sheetLiveParticipants).length;
     state = mergedState;
     meetingMinutes = mergedMinutes;
+    deletedMinutes = mergedMinuteDeletions;
     liveParticipants = mergedLiveParticipants;
     saveLocalState();
     renderBoard();
@@ -734,7 +837,12 @@ async function saveSheetState() {
 
   const regularTasks = flattenState().filter((item) => !isCompatibilityRow(item));
   const payload = JSON.stringify({
-    tasks: [...regularTasks, ...flattenLiveCompatibilityRows(), ...flattenMinutesCompatibilityRows()],
+    tasks: [
+      ...regularTasks,
+      ...flattenLiveCompatibilityRows(),
+      ...flattenMinutesCompatibilityRows(),
+      ...flattenMinutesDeletionCompatibilityRows(),
+    ],
     minutes: flattenMinutes(),
     liveParticipants: flattenLiveParticipants(),
   });
@@ -1872,24 +1980,99 @@ function saveMeetingMinutes() {
 function openMinutesModal(minutesId) {
   const item = meetingMinutes.find((minutes) => minutes.id === minutesId);
   if (!item) return;
-  minutesModalDepartment.textContent = `${item.department} · LOCKED`;
+  activeMinutesId = item.id;
+  setMinutesModalEditing(false);
+  minutesModalDepartment.textContent = `${item.department} · 已保存`;
   minutesModalTitle.textContent = item.title;
   minutesModalMeta.innerHTML = `
     <span>${escapeHtml(formatPeriodLabel(item.meetingDate))}</span>
     ${item.participantName ? `<span>Recorder: ${escapeHtml(item.participantName)}</span>` : ""}
     <span>${escapeHtml(formatCreatedAt(item.createdAt))}</span>
-    <span>只读</span>
   `;
   minutesModalSummary.hidden = !item.summary;
   minutesModalSummary.innerHTML = item.summary
     ? `<p class="eyebrow">整理摘要</p><pre>${escapeHtml(item.summary)}</pre>`
     : "";
   minutesModalBody.textContent = item.minutes;
-  minutesModal.showModal();
+  if (!minutesModal.open) minutesModal.showModal();
 }
 
 function closeMinutesModal() {
+  activeMinutesId = "";
+  setMinutesModalEditing(false);
   minutesModal.close();
+}
+
+function setMinutesModalEditing(isEditing) {
+  minutesModalReadView.hidden = isEditing;
+  minutesModalEditView.hidden = !isEditing;
+  editMinutesButton.hidden = isEditing;
+  deleteMinutesButton.hidden = isEditing;
+  closeMinutesModalFooterButton.hidden = isEditing;
+  cancelMinutesEditButton.hidden = !isEditing;
+  saveMinutesEditButton.hidden = !isEditing;
+}
+
+function beginMinutesEdit() {
+  const item = meetingMinutes.find((minutes) => minutes.id === activeMinutesId);
+  if (!item) return;
+  const periodKey = getPeriodKey(item.meetingDate) || createPeriodKey(getCurrentMonthKey(), getCurrentWeekKey());
+  minutesEditParticipant.value = item.participantName || "";
+  minutesEditTitle.value = item.title || "";
+  minutesEditMonth.value = periodKey.slice(0, 7);
+  minutesEditWeek.value = periodKey.slice(-2);
+  minutesEditBody.value = item.minutes || "";
+  minutesEditSummary.value = item.summary || "";
+  setMinutesModalEditing(true);
+  minutesEditParticipant.focus();
+}
+
+function cancelMinutesEdit() {
+  setMinutesModalEditing(false);
+}
+
+function saveMinutesEdit() {
+  const index = meetingMinutes.findIndex((minutes) => minutes.id === activeMinutesId);
+  if (index < 0) return;
+  const participant = minutesEditParticipant.value.trim();
+  const title = minutesEditTitle.value.trim();
+  const body = minutesEditBody.value.trim();
+  if (!participant || !title || !minutesEditMonth.value || !body) {
+    showToast("请填写记录者、会议主题、月份和原始记录");
+    return;
+  }
+
+  meetingMinutes[index] = {
+    ...meetingMinutes[index],
+    participantName: participant,
+    title,
+    meetingDate: createPeriodKey(minutesEditMonth.value, minutesEditWeek.value),
+    minutes: body,
+    summary: minutesEditSummary.value.trim(),
+    createdAt: new Date().toISOString(),
+    locked: true,
+  };
+  meetingMinutes = applyMinuteDeletions(dedupeMeetingMinutes(meetingMinutes));
+  saveState();
+  renderMinutesArchive();
+  openMinutesModal(activeMinutesId);
+  showToast("记录已更新");
+}
+
+function deleteMinutesRecord() {
+  const item = meetingMinutes.find((minutes) => minutes.id === activeMinutesId);
+  if (!item) return;
+  const label = `${item.participantName || "未填写姓名"}的《${item.title}》`;
+  if (!window.confirm(`确定删除${label}吗？删除后不会再显示。`)) return;
+
+  deletedMinutes = mergeMinuteDeletions(deletedMinutes, [
+    { key: `id:${item.id}`, deletedAt: new Date().toISOString() },
+  ]);
+  meetingMinutes = applyMinuteDeletions(meetingMinutes);
+  closeMinutesModal();
+  saveState();
+  renderMinutesArchive();
+  showToast("记录已删除");
 }
 
 function getTask(department, categoryId, taskId) {
@@ -2206,6 +2389,10 @@ taskModal.addEventListener("click", (event) => {
 
 closeMinutesModalButton.addEventListener("click", closeMinutesModal);
 closeMinutesModalFooterButton.addEventListener("click", closeMinutesModal);
+editMinutesButton.addEventListener("click", beginMinutesEdit);
+cancelMinutesEditButton.addEventListener("click", cancelMinutesEdit);
+saveMinutesEditButton.addEventListener("click", saveMinutesEdit);
+deleteMinutesButton.addEventListener("click", deleteMinutesRecord);
 minutesModal.addEventListener("click", (event) => {
   if (event.target === minutesModal) closeMinutesModal();
 });

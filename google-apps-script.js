@@ -3,6 +3,7 @@ const MINUTES_SHEET_NAME = "Meeting Minutes";
 const LIVE_SHEET_NAME = "Live Meeting";
 const LIVE_COMPAT_PREFIX = "__coforyou_live__";
 const MINUTES_COMPAT_PREFIX = "__coforyou_minutes__";
+const MINUTES_DELETION_COMPAT_PREFIX = "__coforyou_minutes_deleted__";
 const COCO_EMAIL = "PASTE_COCO_EMAIL_HERE";
 const GEMINI_MODEL = "gemini-3.5-flash";
 const GEMINI_FALLBACK_MODEL = "gemini-2.5-flash";
@@ -132,7 +133,9 @@ function doPost(event) {
 
 function isCompatibilityTask(task) {
   const id = String(task && task.id || "");
-  return id.startsWith(LIVE_COMPAT_PREFIX) || id.startsWith(MINUTES_COMPAT_PREFIX);
+  return id.startsWith(LIVE_COMPAT_PREFIX) ||
+    id.startsWith(MINUTES_COMPAT_PREFIX) ||
+    id.startsWith(MINUTES_DELETION_COMPAT_PREFIX);
 }
 
 function sendCocoPendingEmailReminders() {
