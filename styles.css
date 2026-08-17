@@ -2129,4 +2129,14 @@ textarea:focus {
   .modal-actions .primary-button {
     width: 100%;
   }
+
+  #minutesModal .modal-heading {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  #minutesModal .modal-close {
+    width: 38px;
+    flex: 0 0 38px;
+  }
 }
